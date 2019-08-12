@@ -1,6 +1,6 @@
 from collections import namedtuple
 from logging import getLogger
-from typing import Callable, Dict, Optional, Tuple, Union
+from typing import Callable, Dict, Optional, Tuple
 
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
@@ -51,9 +51,9 @@ class Jsonrpc:
         self._post_routes = {}
         self._ws_routes = {}
 
-    def __call__(self, name: Optional[str] = None, *, post: bool = True, ws: bool = True, **annotations) -> Callable:
+    def __call__(self, name: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
         if isinstance(name, Callable):
-            return self.__call__(name.__name__, post=post, ws=ws)(name)
+            return self.__call__(name.__name__, post_=post_, ws_=ws_)(name)
 
         def deco(func: Callable) -> Callable:
             if name:
@@ -65,10 +65,10 @@ class Jsonrpc:
                 *self._annotations(getattr(func, '__annotations__', {}), annotations)
             )
 
-            if post:
+            if post_:
                 self._post_routes[route.name] = route
 
-            if ws:
+            if ws_:
                 self._ws_routes[route.name] = route
 
             return func
@@ -76,10 +76,10 @@ class Jsonrpc:
         return deco
 
     def post(self, name: Optional[str] = None, **annotations) -> Callable:
-        return self.__call__(name, post=True, ws=False, **annotations)
+        return self.__call__(name, post_=True, ws_=False, **annotations)
 
     def ws(self, name: Optional[str] = None, **annotations) -> Callable:
-        return self.__call__(name, post=False, ws=True, **annotations)
+        return self.__call__(name, post_=False, ws_=True, **annotations)
 
-    def method(self, name: Optional[str] = None, *, post: bool = True, ws: bool = True, **annotations) -> Callable:
-        return self.__call__(name, post=post, ws=ws, **annotations)
+    def method(self, name: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
+        return self.__call__(name, post_=post_, ws_=ws_, **annotations)
