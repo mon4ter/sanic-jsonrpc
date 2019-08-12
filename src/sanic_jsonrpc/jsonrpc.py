@@ -1,23 +1,20 @@
 from collections import namedtuple
-from functools import partial
 from logging import getLogger
-from typing import Optional, Callable, Tuple, Union, Dict, FrozenSet
+from typing import Callable, Dict, Optional, Tuple, Union
 
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 
-logger = getLogger(__name__)
-
 __all__ = [
     'logger',
     'Jsonrpc',
-
 ]
 
-Types = Union[type, Tuple[type, ...]]
+Annotations = Dict[str, type]
 Route = namedtuple('Method', ('name', 'func', 'params', 'result'))
+logger = getLogger(__name__)
 
 
 class Jsonrpc:
@@ -30,20 +27,11 @@ class Jsonrpc:
         ...
 
     @staticmethod
-    def _parse_types(
-            func: Callable,
-            params: Optional[Types] = None,
-            result: Optional[type] = None
-    ) -> Tuple[Optional[Dict[Union[str, int], type]], Optional[type]]:
-        annotations = getattr(func, '__annotations__', {})
-        result = result or annotations.get('return')
-
-        if params is not None:
-            params = {i: p for i, p in enumerate(params if isinstance(params, tuple) else (params,))}
-        else:
-            params = {k: v for k, v in annotations.items() if k != 'return'}
-
-        return params or None, result or None
+    def _annotations(annotations: Annotations, extra: Annotations) -> Tuple[Optional[Annotations], Optional[type]]:
+        result = annotations.pop('return', None)
+        result = extra.pop('result', result)
+        annotations.update(extra)
+        return annotations or None, result
 
     def _route_post(self, method: str) -> Optional[Route]:
         return self._post_routes.get(method)
@@ -63,33 +51,35 @@ class Jsonrpc:
         self._post_routes = {}
         self._ws_routes = {}
 
-    def method(
-            self,
-            name: Union[Callable, Optional[str]] = None,
-            params: Optional[Types] = None,
-            result: Optional[type] = None,
-            *,
-            routes: FrozenSet = frozenset({'post', 'ws'})
-    ) -> Callable:
+    def __call__(self, name: Optional[str] = None, *, post: bool = True, ws: bool = True, **annotations) -> Callable:
         if isinstance(name, Callable):
-            return self.method(name.__name__, routes=routes)(name)
+            return self.__call__(name.__name__, post=post, ws=ws)(name)
 
         def deco(func: Callable) -> Callable:
             if name:
                 func.__name__ = name
 
-            method = Route(name or func.__name__, func, *self._parse_types(func, params, result))
+            route = Route(
+                name or func.__name__,
+                func,
+                *self._annotations(getattr(func, '__annotations__', {}), annotations)
+            )
 
-            if 'post' in routes:
-                self._post_routes[method.name] = method
+            if post:
+                self._post_routes[route.name] = route
 
-            if 'ws' in routes:
-                self._ws_routes[method.name] = method
+            if ws:
+                self._ws_routes[route.name] = route
 
             return func
 
         return deco
 
-    rest = partial(method, routes=frozenset({'rest'}))
-    ws = partial(method, routes=frozenset({'ws'}))
-    __call__ = method
+    def post(self, name: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name, post=True, ws=False, **annotations)
+
+    def ws(self, name: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name, post=False, ws=True, **annotations)
+
+    def method(self, name: Optional[str] = None, *, post: bool = True, ws: bool = True, **annotations) -> Callable:
+        return self.__call__(name, post=post, ws=ws, **annotations)

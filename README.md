@@ -37,11 +37,11 @@ class Pair:
         self.second = int(second)
 
 @jsonrpc
-def concat(pair: Pair) -> str:
+async def concat(pair: Pair) -> str:
     return '{}.{}'.format(pair.first, pair.second)
     
-@jsonrpc('Concat', Pair, str)
-def con(p):
+@jsonrpc('Concat', p=Pair, result=str)
+async def con(p):
     return '{}.{}'.format(p.first, p.second)
 
 app.run(host='0.0.0.0', port=8000, debug=True)
