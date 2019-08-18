@@ -7,7 +7,7 @@ __all__ = [
 ]
 
 
-class Error(Model):
+class Error(Model, Exception):
     code = Attribute(int)
     message = Attribute(str)
     data = Attribute(Any)
