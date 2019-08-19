@@ -1,4 +1,4 @@
-from asyncio import gather, get_event_loop, iscoroutine, Queue
+from asyncio import FIRST_COMPLETED, Future, Queue, ensure_future, gather, get_event_loop, iscoroutine, wait
 from collections import namedtuple
 from logging import getLogger
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -10,7 +10,7 @@ from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
 
-from .models import Notification, Request, Response, Error
+from .models import Error, Notification, Request, Response
 
 __all__ = [
     'logger',
@@ -70,7 +70,10 @@ class Jsonrpc:
             return dumps(obj)
         except (TypeError, ValueError) as err:
             logger.error("Failed to serialize response: %s", err)
-            return self._serialize_responses([Response('2.0', error=(-32603, "Internal error"))], single=True)
+            return self._serialize_response(Response('2.0', error=(-32603, "Internal error")))
+
+    def _serialize_response(self, response: Response) -> str:
+        return self._serialize(self.response(response))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
@@ -81,7 +84,13 @@ class Jsonrpc:
 
         return self._serialize([self.response(r) for r in responses])
 
-    async def _call(self, message: Message, route: Route, sanic_request: SanicRequest) -> Optional[Response]:
+    async def _call(
+            self,
+            message: Message,
+            route: Route,
+            sanic_request: SanicRequest,
+            ws: Optional[WebSocketCommonProtocol] = None
+    ) -> Optional[Response]:
         logger.debug("--> %r", message)
 
         args = []
@@ -97,10 +106,10 @@ class Jsonrpc:
             for name, typ in route.params.items():
                 if typ is SanicRequest:
                     kwargs[name] = sanic_request
-                    continue
+                elif typ is WebSocketCommonProtocol:
+                    kwargs[name] = ws
                 elif typ is Sanic:
                     kwargs[name] = self.app
-                    continue
 
         try:
             result = route.func(*args, **kwargs)
@@ -162,8 +171,62 @@ class Jsonrpc:
         content_type = 'application/json' if body else 'text/plain'
         return HTTPResponse(body, 207, content_type=content_type)
 
+    def _ws_response(self, ws: WebSocketCommonProtocol, response: Response) -> Future:
+        return ensure_future(ws.send(self._serialize_response(response)))
+
     async def _ws(self, request: SanicRequest, ws: WebSocketCommonProtocol):
-        ...
+        aws = set()
+
+        while True:
+            aws.add(ws.recv())
+            done, pending = await wait(aws, return_when=FIRST_COMPLETED)
+            aws = pending
+            aws -= done
+
+            for task in done:
+                err = task.exception()
+
+                if err:
+                    logger.error("%s", err, exc_info=err)
+                    continue
+
+                result = task.result()
+
+                if not result:
+                    continue
+
+                if isinstance(result, Response):
+                    aws.add(self._ws_response(ws, result))
+                    continue
+
+                try:
+                    obj = loads(result)
+                except (TypeError, ValueError):
+                    aws.add(self._ws_response(ws, Response('2.0', error=(-32700, "Parse error"))))
+                    continue
+
+                message = self._parse_message(obj)
+
+                if isinstance(message, Response):
+                    aws.add(self._ws_response(ws, message))
+                    continue
+
+                route = self._route_ws(message.method)
+
+                if not route:
+                    if isinstance(message, Request):
+                        response = Response('2.0', error=(-32601, "Method not found"), id=message.id)
+                        aws.add(self._ws_response(ws, response))
+                    else:
+                        logger.info("Unhandled %r", message)
+
+                    continue
+
+                task = get_event_loop().create_task(self._call(message, route, request, ws))
+                self._calls.put_nowait(task)
+
+                if isinstance(message, Request):
+                    aws.add(task)
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
         self.app = app
