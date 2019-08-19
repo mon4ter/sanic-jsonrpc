@@ -8,7 +8,7 @@ from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
-from ujson import dumps
+from ujson import dumps, loads
 
 from .models import Notification, Request, Response, Error
 
@@ -53,9 +53,9 @@ class Jsonrpc:
 
     def _parse_messages(self, request: SanicRequest) -> Union[JsonrpcType, List[JsonrpcType]]:
         try:
-            messages = request.json
+            messages = loads(request.body)
         except (TypeError, ValueError):
-            return [Response('2.0', error=(-32700, "Parse error"))]
+            return Response('2.0', error=(-32700, "Parse error"))
 
         if isinstance(messages, list):
             if not messages:
@@ -70,25 +70,28 @@ class Jsonrpc:
             return dumps(obj)
         except (TypeError, ValueError) as err:
             logger.error("Failed to serialize response: %s", err)
-            return self._serialize_response(Response('2.0', error=(-32603, "Internal error")))
-
-    def _serialize_response(self, response: Response) -> str:
-        return self._serialize(dict(response))
+            return self._serialize_responses([Response('2.0', error=(-32603, "Internal error"))], single=True)
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
             return None
 
         if single:
-            return self._serialize_response(responses[0])
+            return self._serialize(self.response(responses[0]))
 
-        return self._serialize([dict(r) for r in responses])
+        return self._serialize([self.response(r) for r in responses])
 
     async def _call(self, message: Message, route: Route, sanic_request: SanicRequest) -> Optional[Response]:
         logger.debug("--> %r", message)
 
         args = []
         kwargs = {}
+
+        # TODO validate params
+        if isinstance(message.params, dict):
+            kwargs.update(message.params)
+        elif isinstance(message.params, list):
+            args.extend(message.params)
 
         if route.params:
             for name, typ in route.params.items():
@@ -98,11 +101,6 @@ class Jsonrpc:
                 elif typ is Sanic:
                     kwargs[name] = self.app
                     continue
-
-                # TODO validate params
-                kwargs[name] = message.params[name]
-        else:
-            args.append(message.params)
 
         try:
             result = route.func(*args, **kwargs)
@@ -212,3 +210,9 @@ class Jsonrpc:
 
     def method(self, name_: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
         return self.__call__(name_, post_=post_, ws_=ws_, **annotations)
+
+    @staticmethod
+    def response(response: Response) -> dict:
+        obj = dict(response)
+        obj.setdefault('id', None)
+        return obj
