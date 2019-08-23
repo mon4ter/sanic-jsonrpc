@@ -1,7 +1,7 @@
-from asyncio import FIRST_COMPLETED, Future, Queue, ensure_future, gather, get_event_loop, iscoroutine, wait
+from asyncio import FIRST_COMPLETED, Future, Queue, Task, ensure_future, gather, get_event_loop, iscoroutine, wait
 from collections import namedtuple
 from logging import getLogger
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
 from fashionable import ModelAttributeError, ModelError
 from sanic import Sanic
@@ -10,6 +10,7 @@ from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
 
+from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
 
 __all__ = [
@@ -20,7 +21,7 @@ __all__ = [
 Annotations = Dict[str, type]
 Message = Union[Request, Notification]
 JsonrpcType = Union[Message, Response]
-Route = namedtuple('Method', ('name', 'func', 'params', 'result'))
+Route = namedtuple('Route', ('name', 'func', 'params', 'result'))
 logger = getLogger(__name__)
 
 
@@ -32,11 +33,28 @@ class Jsonrpc:
         annotations.update(extra)
         return annotations or None, result
 
-    def _route_post(self, method: str) -> Optional[Route]:
-        return self._post_routes.get(method)
+    @staticmethod
+    def _route(message: Message, routes: Dict[str, Route]) -> Optional[Union[Route, Response]]:
+        route = routes.get(message.method)
 
-    def _route_ws(self, method: str) -> Optional[Route]:
-        return self._ws_routes.get(method)
+        if route:
+            return route
+
+        if isinstance(message, Request):
+            return Response('2.0', error=METHOD_NOT_FOUND, id=message.id)
+
+    def _route_post(self, message: Message) -> Optional[Union[Route, Response]]:
+        return self._route(message, self._post_routes)
+
+    def _route_ws(self, message: Message) -> Optional[Union[Route, Response]]:
+        return self._route(message, self._ws_routes)
+
+    @staticmethod
+    def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
+        try:
+            return loads(json)
+        except (TypeError, ValueError):
+            return Response('2.0', error=PARSE_ERROR)
 
     @staticmethod
     def _parse_message(message: Dict) -> JsonrpcType:
@@ -49,28 +67,28 @@ class Jsonrpc:
                 except (TypeError, ModelError):
                     pass
 
-            return Response('2.0', error=(-32600, "Invalid Request"))
+            return Response('2.0', error=INVALID_REQUEST)
 
     def _parse_messages(self, request: SanicRequest) -> Union[JsonrpcType, List[JsonrpcType]]:
-        try:
-            messages = loads(request.body)
-        except (TypeError, ValueError):
-            return Response('2.0', error=(-32700, "Parse error"))
+        messages = self._parse_json(request.body)
+
+        if isinstance(messages, Response):
+            return messages
 
         if isinstance(messages, list):
             if not messages:
-                return Response('2.0', error=(-32600, "Invalid Request"))
-            else:
-                return [self._parse_message(m) for m in messages]
-        else:
-            return self._parse_message(messages)
+                return Response('2.0', error=INVALID_REQUEST)
+
+            return [self._parse_message(m) for m in messages]
+
+        return self._parse_message(messages)
 
     def _serialize(self, obj: Any) -> str:
         try:
             return dumps(obj)
         except (TypeError, ValueError) as err:
-            logger.error("Failed to serialize response: %s", err)
-            return self._serialize_response(Response('2.0', error=(-32603, "Internal error")))
+            logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
+            return self._serialize_response(Response('2.0', error=INTERNAL_ERROR))
 
     def _serialize_response(self, response: Response) -> str:
         return self._serialize(self.response(response))
@@ -83,6 +101,11 @@ class Jsonrpc:
             return self._serialize(self.response(responses[0]))
 
         return self._serialize([self.response(r) for r in responses])
+
+    def _register_call(self, *args, **kwargs) -> Task:
+        task = get_event_loop().create_task(self._call(*args, **kwargs))
+        self._calls.put_nowait(task)
+        return task
 
     async def _call(
             self,
@@ -110,25 +133,30 @@ class Jsonrpc:
                     kwargs[name] = ws
                 elif typ is Sanic:
                     kwargs[name] = self.app
+                elif typ is Request or typ is Notification:
+                    kwargs[name] = message
+
+        result = None
+        error = None
 
         try:
-            result = route.func(*args, **kwargs)
+            ret = route.func(*args, **kwargs)
 
-            if iscoroutine(result):
-                result = await result
-        except Error as error:
-            response = Response('2.0', error=error)
+            if iscoroutine(ret):
+                ret = await ret
+        except Error as err:
+            error = err
         except TypeError:
-            response = Response('2.0', error=(-32602, "Invalid params"))
+            error = INVALID_PARAMS
         except Exception as err:
             logger.error("%r failed: %s", message, err, exc_info=err)
-            response = Response('2.0', error=(-32603, "Internal error"))
+            error = INTERNAL_ERROR
         else:
             # TODO validate result
-            response = Response('2.0', result=result)
+            result = ret
 
         if isinstance(message, Request):
-            response.id = message.id
+            response = Response('2.0', result=result, error=error, id=message.id)
             logger.debug("<-- %r", response)
             return response
 
@@ -148,18 +176,17 @@ class Jsonrpc:
                 responses.append(message)
                 continue
 
-            route = self._route_post(message.method)
+            route = self._route_post(message)
 
-            if not route:
-                if isinstance(message, Request):
-                    responses.append(Response('2.0', error=(-32601, "Method not found"), id=message.id))
+            if not isinstance(route, Route):
+                if route:
+                    responses.append(route)
                 else:
                     logger.info("Unhandled %r", message)
 
                 continue
 
-            task = get_event_loop().create_task(self._call(message, route, sanic_request))
-            self._calls.put_nowait(task)
+            task = self._register_call(message, route, sanic_request)
 
             if isinstance(message, Request):
                 tasks.append(task)
@@ -174,14 +201,17 @@ class Jsonrpc:
     def _ws_response(self, ws: WebSocketCommonProtocol, response: Response) -> Future:
         return ensure_future(ws.send(self._serialize_response(response)))
 
-    async def _ws(self, request: SanicRequest, ws: WebSocketCommonProtocol):
-        aws = set()
+    async def _ws(self, sanic_request: SanicRequest, ws: WebSocketCommonProtocol):
+        recv = None
+        pending = set()
 
         while True:
-            aws.add(ws.recv())
-            done, pending = await wait(aws, return_when=FIRST_COMPLETED)
-            aws = pending
-            aws -= done
+            if recv not in pending:
+                recv = ensure_future(ws.recv())
+
+                pending.add(recv)
+
+            done, pending = await wait(pending, return_when=FIRST_COMPLETED)
 
             for task in done:
                 err = task.exception()
@@ -196,37 +226,35 @@ class Jsonrpc:
                     continue
 
                 if isinstance(result, Response):
-                    aws.add(self._ws_response(ws, result))
+                    pending.add(self._ws_response(ws, result))
                     continue
 
-                try:
-                    obj = loads(result)
-                except (TypeError, ValueError):
-                    aws.add(self._ws_response(ws, Response('2.0', error=(-32700, "Parse error"))))
+                obj = self._parse_json(result)
+
+                if isinstance(obj, Response):
+                    pending.add(self._ws_response(ws, obj))
                     continue
 
                 message = self._parse_message(obj)
 
                 if isinstance(message, Response):
-                    aws.add(self._ws_response(ws, message))
+                    pending.add(self._ws_response(ws, message))
                     continue
 
-                route = self._route_ws(message.method)
+                route = self._route_ws(message)
 
-                if not route:
-                    if isinstance(message, Request):
-                        response = Response('2.0', error=(-32601, "Method not found"), id=message.id)
-                        aws.add(self._ws_response(ws, response))
+                if not isinstance(route, Route):
+                    if route:
+                        pending.add(self._ws_response(ws, route))
                     else:
                         logger.info("Unhandled %r", message)
 
                     continue
 
-                task = get_event_loop().create_task(self._call(message, route, request, ws))
-                self._calls.put_nowait(task)
+                task = self._register_call(message, route, sanic_request, ws)
 
                 if isinstance(message, Request):
-                    aws.add(task)
+                    pending.add(task)
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
         self.app = app
@@ -239,6 +267,7 @@ class Jsonrpc:
 
         self._post_routes = {}
         self._ws_routes = {}
+        # TODO process calls
         self._calls = Queue()
 
     def __call__(self, name_: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:

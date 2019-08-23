@@ -1,3 +1,4 @@
+from .errors import *
 from .jsonrpc import *
 from .models import *
 

@@ -24,10 +24,10 @@ def test_jsonrpc():
     def fmb():
         ...
 
-    mf = jsonrpc._route_post('f')
-    mfb = jsonrpc._route_post('fb')
-    mfm = jsonrpc._route_post('fm')
-    mfmb = jsonrpc._route_post('fmb')
+    mf = jsonrpc._post_routes['f']
+    mfb = jsonrpc._post_routes['fb']
+    mfm = jsonrpc._post_routes['fm']
+    mfmb = jsonrpc._post_routes['fmb']
 
     assert mf.name == 'f'
     assert isinstance(mf.func, Callable)
@@ -62,9 +62,9 @@ def test_name():
     def fm():
         ...
 
-    mf = jsonrpc._route_post('Func')
-    mfb = jsonrpc._route_post('FuncB')
-    mfm = jsonrpc._route_post('FuncM')
+    mf = jsonrpc._post_routes['Func']
+    mfb = jsonrpc._post_routes['FuncB']
+    mfm = jsonrpc._post_routes['FuncM']
 
     assert mf.name == 'Func'
     assert mf.func is f
@@ -118,14 +118,14 @@ def test_annotation():
     async def concat(pair: Pair) -> str:
         return str(pair.first) + str(pair.second)
 
-    mf = jsonrpc._route_post('f')
-    mfb = jsonrpc._route_post('fb')
-    mfm = jsonrpc._route_post('fm')
-    mfmb = jsonrpc._route_post('fmb')
-    mfn = jsonrpc._route_post('FuncN')
-    mfmn = jsonrpc._route_post('FuncMN')
-    mfab = jsonrpc._route_post('fab')
-    mconcat = jsonrpc._route_post('concat')
+    mf = jsonrpc._post_routes['f']
+    mfb = jsonrpc._post_routes['fb']
+    mfm = jsonrpc._post_routes['fm']
+    mfmb = jsonrpc._post_routes['fmb']
+    mfn = jsonrpc._post_routes['FuncN']
+    mfmn = jsonrpc._post_routes['FuncMN']
+    mfab = jsonrpc._post_routes['fab']
+    mconcat = jsonrpc._post_routes['concat']
 
     assert mf.func is f
     assert mf.params == {'a': int}
@@ -208,16 +208,16 @@ def test_params_result():
     async def concat(pair):
         return str(pair.first) + str(pair.second)
 
-    mfp = jsonrpc._route_post('fp')
-    mfmp = jsonrpc._route_post('fmp')
-    mfpk = jsonrpc._route_post('fpk')
-    mfmpk = jsonrpc._route_post('fmpk')
-    mfr = jsonrpc._route_post('fr')
-    mfmr = jsonrpc._route_post('fmr')
-    mfrk = jsonrpc._route_post('frk')
-    mfmrk = jsonrpc._route_post('fmrk')
-    mfab = jsonrpc._route_post('fab')
-    mconcat = jsonrpc._route_post('concat')
+    mfp = jsonrpc._post_routes['fp']
+    mfmp = jsonrpc._post_routes['fmp']
+    mfpk = jsonrpc._post_routes['fpk']
+    mfmpk = jsonrpc._post_routes['fmpk']
+    mfr = jsonrpc._post_routes['fr']
+    mfmr = jsonrpc._post_routes['fmr']
+    mfrk = jsonrpc._post_routes['frk']
+    mfmrk = jsonrpc._post_routes['fmrk']
+    mfab = jsonrpc._post_routes['fab']
+    mconcat = jsonrpc._post_routes['concat']
 
     assert mfp.func is fp
     assert mfp.params == {'a': int}
@@ -295,14 +295,14 @@ def test_params_result_override():
     def fmrk(a) -> str:
         return str(a)
 
-    mfp = jsonrpc._route_post('fp')
-    mfmp = jsonrpc._route_post('fmp')
-    mfpk = jsonrpc._route_post('fpk')
-    mfmpk = jsonrpc._route_post('fmpk')
-    mfr = jsonrpc._route_post('fr')
-    mfmr = jsonrpc._route_post('fmr')
-    mfrk = jsonrpc._route_post('frk')
-    mfmrk = jsonrpc._route_post('fmrk')
+    mfp = jsonrpc._post_routes['fp']
+    mfmp = jsonrpc._post_routes['fmp']
+    mfpk = jsonrpc._post_routes['fpk']
+    mfmpk = jsonrpc._post_routes['fmpk']
+    mfr = jsonrpc._post_routes['fr']
+    mfmr = jsonrpc._post_routes['fmr']
+    mfrk = jsonrpc._post_routes['frk']
+    mfmrk = jsonrpc._post_routes['fmrk']
 
     assert mfp.func is fp
     assert mfp.params == {'a': int}
@@ -374,26 +374,26 @@ def test_rest_ws():
     def fwb():
         ...
 
-    assert jsonrpc._route_post('fa') is not None
-    assert jsonrpc._route_ws('fa') is not None
+    assert jsonrpc._post_routes['fa'] is not None
+    assert jsonrpc._ws_routes['fa'] is not None
 
-    assert jsonrpc._route_post('fba') is not None
-    assert jsonrpc._route_ws('fba') is not None
+    assert jsonrpc._post_routes['fba'] is not None
+    assert jsonrpc._ws_routes['fba'] is not None
 
-    assert jsonrpc._route_post('fma') is not None
-    assert jsonrpc._route_ws('fma') is not None
+    assert jsonrpc._post_routes['fma'] is not None
+    assert jsonrpc._ws_routes['fma'] is not None
 
-    assert jsonrpc._route_post('fmba') is not None
-    assert jsonrpc._route_ws('fmba') is not None
+    assert jsonrpc._post_routes['fmba'] is not None
+    assert jsonrpc._ws_routes['fmba'] is not None
 
-    assert jsonrpc._route_post('fp') is not None
-    assert jsonrpc._route_ws('fp') is None
+    assert jsonrpc._post_routes['fp'] is not None
+    assert jsonrpc._ws_routes.get('fp') is None
 
-    assert jsonrpc._route_post('fpb') is not None
-    assert jsonrpc._route_ws('fpb') is None
+    assert jsonrpc._post_routes['fpb'] is not None
+    assert jsonrpc._ws_routes.get('fpb') is None
 
-    assert jsonrpc._route_post('fw') is None
-    assert jsonrpc._route_ws('fw') is not None
+    assert jsonrpc._post_routes.get('fw') is None
+    assert jsonrpc._ws_routes['fw'] is not None
 
-    assert jsonrpc._route_post('fwb') is None
-    assert jsonrpc._route_ws('fwb') is not None
+    assert jsonrpc._post_routes.get('fwb') is None
+    assert jsonrpc._ws_routes['fwb'] is not None
