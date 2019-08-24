@@ -19,7 +19,10 @@ setup(
         'ujson',
     ],
     setup_requires=['pytest-runner'],
-    tests_require=['pytest', 'pytest-asyncio'],
+    tests_require=[
+        'pytest',
+        'pytest-sanic',
+    ],
     url='https://github.com/mon4ter/sanic-jsonrpc',
     license='MIT',
     author='Dmitry Galkin',
