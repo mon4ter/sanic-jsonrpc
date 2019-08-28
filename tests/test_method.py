@@ -1,12 +1,13 @@
 from typing import Callable
 
+from sanic import Sanic
+
 from sanic_jsonrpc import Jsonrpc
 
 
 # noinspection PyProtectedMember
 def test_jsonrpc():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc
     def f():
@@ -47,8 +48,7 @@ def test_jsonrpc():
 
 # noinspection PyProtectedMember
 def test_name():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc('Func')
     def f():
@@ -78,8 +78,7 @@ def test_name():
 
 # noinspection PyProtectedMember,DuplicatedCode
 def test_annotation():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc
     def f(a: int) -> str:
@@ -160,8 +159,7 @@ def test_annotation():
 
 # noinspection PyProtectedMember,DuplicatedCode
 def test_params_result():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc(None, a=int)
     def fp(a):
@@ -260,8 +258,7 @@ def test_params_result():
 
 # noinspection PyProtectedMember,DuplicatedCode
 def test_params_result_override():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc(None, a=int)
     def fp(a: float):
@@ -339,8 +336,7 @@ def test_params_result_override():
 
 # noinspection PyProtectedMember
 def test_rest_ws():
-    # noinspection PyTypeChecker
-    jsonrpc = Jsonrpc(None)
+    jsonrpc = Jsonrpc(Sanic())
 
     @jsonrpc
     def fa():

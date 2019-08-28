@@ -1,4 +1,4 @@
-from asyncio import FIRST_COMPLETED, Future, Queue, Task, ensure_future, gather, get_event_loop, iscoroutine, wait
+from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, iscoroutine, shield, wait
 from collections import namedtuple
 from logging import getLogger
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
@@ -102,10 +102,10 @@ class Jsonrpc:
 
         return self._serialize([self.response(r) for r in responses])
 
-    def _register_call(self, *args, **kwargs) -> Task:
-        task = get_event_loop().create_task(self._call(*args, **kwargs))
-        self._calls.put_nowait(task)
-        return task
+    def _register_call(self, *args, **kwargs) -> Future:
+        fut = shield(self._call(*args, **kwargs))
+        self._calls.put_nowait(fut)
+        return fut
 
     async def _call(
             self,
@@ -169,7 +169,7 @@ class Jsonrpc:
             messages = [messages]
 
         responses = []
-        tasks = []
+        futures = []
 
         for message in messages:
             if isinstance(message, Response):
@@ -186,12 +186,12 @@ class Jsonrpc:
 
                 continue
 
-            task = self._register_call(message, route, sanic_request)
+            fut = self._register_call(message, route, sanic_request)
 
             if isinstance(message, Request):
-                tasks.append(task)
+                futures.append(fut)
 
-        for response in await gather(*tasks):
+        for response in await gather(*futures):
             responses.append(response)
 
         body = self._serialize_responses(responses, single)
@@ -213,14 +213,14 @@ class Jsonrpc:
 
             done, pending = await wait(pending, return_when=FIRST_COMPLETED)
 
-            for task in done:
-                err = task.exception()
+            for fut in done:
+                err = fut.exception()
 
                 if err:
                     logger.error("%s", err, exc_info=err)
                     continue
 
-                result = task.result()
+                result = fut.result()
 
                 if not result:
                     continue
@@ -251,10 +251,23 @@ class Jsonrpc:
 
                     continue
 
-                task = self._register_call(message, route, sanic_request, ws)
+                fut = self._register_call(message, route, sanic_request, ws)
 
                 if isinstance(message, Request):
-                    pending.add(task)
+                    pending.add(fut)
+
+    async def _processing(self):
+        calls = self._calls
+
+        try:
+            while True:
+                call = await calls.get()
+                await call
+        except CancelledError:
+            pass
+        finally:
+            while not calls.empty():
+                await calls.get_nowait()
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
         self.app = app
@@ -267,8 +280,17 @@ class Jsonrpc:
 
         self._post_routes = {}
         self._ws_routes = {}
-        # TODO process calls
         self._calls = Queue()
+        self._processing_task = None
+
+        @app.listener('after_server_start')
+        async def start_processing(_app, _loop):
+            self._processing_task = ensure_future(self._processing())
+
+        @app.listener('before_server_stop')
+        async def finish_calls(_app, _loop):
+            self._processing_task.cancel()
+            await self._processing_task
 
     def __call__(self, name_: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
         if isinstance(name_, Callable):
