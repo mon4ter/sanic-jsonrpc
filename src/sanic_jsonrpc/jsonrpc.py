@@ -3,7 +3,7 @@ from collections import namedtuple
 from logging import getLogger
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
-from fashionable import ModelAttributeError, ModelError
+from fashionable import ModelAttributeError, ModelError, validate
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
@@ -152,8 +152,14 @@ class Jsonrpc:
             logger.error("%r failed: %s", message, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
-            # TODO validate result
-            result = ret
+            if route.result:
+                try:
+                    result = validate(route.result, ret, strict=False)
+                except (TypeError, ValueError) as err:
+                    logger.error("Invalid response to %r: %s", message, err, exc_info=err)
+                    error = INTERNAL_ERROR
+            else:
+                result = ret
 
         if isinstance(message, Request):
             response = Response('2.0', result=result, error=error, id=message.id)
