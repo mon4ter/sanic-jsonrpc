@@ -33,21 +33,16 @@ class Jsonrpc:
         annotations.update(extra)
         return annotations or None, result
 
-    @staticmethod
-    def _route(message: Message, routes: Dict[str, Route]) -> Optional[Union[Route, Response]]:
-        route = routes.get(message.method)
+    # TODO Routing tests
+    def _route(self, is_post: bool, message: Message) -> Optional[Union[Route, Response]]:
+        is_request = isinstance(message, Request)
+        route = self._routes.get((is_post, is_request, message.method))
 
         if route:
             return route
 
-        if isinstance(message, Request):
+        if is_request:
             return Response('2.0', error=METHOD_NOT_FOUND, id=message.id)
-
-    def _route_post(self, message: Message) -> Optional[Union[Route, Response]]:
-        return self._route(message, self._post_routes)
-
-    def _route_ws(self, message: Message) -> Optional[Union[Route, Response]]:
-        return self._route(message, self._ws_routes)
 
     @staticmethod
     def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
@@ -182,7 +177,7 @@ class Jsonrpc:
                 responses.append(message)
                 continue
 
-            route = self._route_post(message)
+            route = self._route(True, message)
 
             if not isinstance(route, Route):
                 if route:
@@ -247,7 +242,7 @@ class Jsonrpc:
                     pending.add(self._ws_response(ws, message))
                     continue
 
-                route = self._route_ws(message)
+                route = self._route(False, message)
 
                 if not isinstance(route, Route):
                     if route:
@@ -284,8 +279,7 @@ class Jsonrpc:
         if ws_route:
             self.app.add_websocket_route(self._ws, ws_route)
 
-        self._post_routes = {}
-        self._ws_routes = {}
+        self._routes = {}
         self._calls = Queue()
         self._processing_task = None
 
@@ -298,9 +292,16 @@ class Jsonrpc:
             self._processing_task.cancel()
             await self._processing_task
 
-    def __call__(self, name_: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
+    def __call__(
+            self,
+            name_: Optional[str] = None,
+            *,
+            is_post_: Optional[bool] = None,
+            is_request_: Optional[bool] = None,
+            **annotations
+    ) -> Callable:
         if isinstance(name_, Callable):
-            return self.__call__(name_.__name__, post_=post_, ws_=ws_)(name_)
+            return self.__call__(name_.__name__, is_post_=is_post_, is_request_=is_request_)(name_)
 
         def deco(func: Callable) -> Callable:
             if name_:
@@ -312,27 +313,52 @@ class Jsonrpc:
                 *self._annotations(getattr(func, '__annotations__', {}), annotations)
             )
 
-            if post_:
-                self._post_routes[route.name] = route
-
-            if ws_:
-                self._ws_routes[route.name] = route
+            if is_post_ is None and is_request_ is None:
+                self._routes[True, True, route.name] = route
+                self._routes[True, False, route.name] = route
+                self._routes[False, True, route.name] = route
+                self._routes[False, False, route.name] = route
+            elif is_post_ is None:
+                self._routes[True, is_request_, route.name] = route
+                self._routes[False, is_request_, route.name] = route
+            elif is_request_ is None:
+                self._routes[is_post_, True, route.name] = route
+                self._routes[is_post_, False, route.name] = route
+            else:
+                self._routes[is_post_, is_request_, route.name] = route
 
             return func
 
         return deco
 
     def post(self, name_: Optional[str] = None, **annotations) -> Callable:
-        return self.__call__(name_, post_=True, ws_=False, **annotations)
+        return self.__call__(name_, is_post_=True, **annotations)
 
     def ws(self, name_: Optional[str] = None, **annotations) -> Callable:
-        return self.__call__(name_, post_=False, ws_=True, **annotations)
+        return self.__call__(name_, is_post_=False, **annotations)
 
-    def method(self, name_: Optional[str] = None, *, post_: bool = True, ws_: bool = True, **annotations) -> Callable:
-        return self.__call__(name_, post_=post_, ws_=ws_, **annotations)
+    def request(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_request_=True, **annotations)
+
+    def notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_request_=False, **annotations)
+
+    def post_request(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_post_=True, is_request_=True, **annotations)
+
+    def ws_request(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_post_=False, is_request_=True, **annotations)
+
+    def post_notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_post_=True, is_request_=False, **annotations)
+
+    def ws_notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+        return self.__call__(name_, is_post_=False, is_request_=False, **annotations)
 
     @staticmethod
     def response(response: Response) -> dict:
         obj = dict(response)
         obj.setdefault('id', None)
         return obj
+
+    # TODO streaming notifications
