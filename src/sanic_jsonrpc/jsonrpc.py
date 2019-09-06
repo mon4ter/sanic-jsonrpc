@@ -1,5 +1,6 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, iscoroutine, shield, wait
 from collections import namedtuple
+from functools import partial
 from logging import getLogger
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
@@ -16,51 +17,56 @@ from .models import Error, Notification, Request, Response
 __all__ = [
     'logger',
     'Jsonrpc',
+    'Notifier',
 ]
 
-Annotations = Dict[str, type]
-Message = Union[Request, Notification]
-JsonrpcType = Union[Message, Response]
-Route = namedtuple('Route', ('name', 'func', 'params', 'result'))
+_Annotations = Dict[str, type]
+_Incoming = Union[Request, Notification]
+_Outgoing = Union[Response, Notification]
+_JsonrpcType = Union[_Incoming, _Outgoing]
+_Route = namedtuple('Route', ('name', 'func', 'params', 'result'))
+_response = partial(Response, '2.0')
+
+Notifier = Callable[[Notification], None]
 logger = getLogger(__name__)
 
 
 class Jsonrpc:
     @staticmethod
-    def _annotations(annotations: Annotations, extra: Annotations) -> Tuple[Optional[Annotations], Optional[type]]:
+    def _annotations(annotations: _Annotations, extra: _Annotations) -> Tuple[Optional[_Annotations], Optional[type]]:
         result = annotations.pop('return', None)
         result = extra.pop('result', result)
         annotations.update(extra)
         return annotations or None, result
 
-    def _route(self, message: Message, is_post: bool) -> Optional[Union[Route, Response]]:
-        is_request = isinstance(message, Request)
-        route = self._routes.get((is_post, is_request, message.method))
+    def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[_Route, Response]]:
+        is_request = isinstance(incoming, Request)
+        route = self._routes.get((is_post, is_request, incoming.method))
 
         if route:
             return route
 
         if is_request:
-            return Response('2.0', error=METHOD_NOT_FOUND, id=message.id)
+            return _response(error=METHOD_NOT_FOUND, id=incoming.id)
 
     @staticmethod
     def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
         try:
             return loads(json)
         except (TypeError, ValueError):
-            return Response('2.0', error=PARSE_ERROR)
+            return _response(error=PARSE_ERROR)
 
     @staticmethod
-    def _parse_message(message: Dict) -> JsonrpcType:
+    def _parse_message(message: Dict) -> _JsonrpcType:
         try:
             return Request(**message)
         except (TypeError, ModelError) as err:
             if isinstance(err, ModelAttributeError) and err.kwargs['attr'] == 'id':
                 return Notification(**message)
 
-            return Response('2.0', error=INVALID_REQUEST)
+            return _response(error=INVALID_REQUEST)
 
-    def _parse_messages(self, request: SanicRequest) -> Union[JsonrpcType, List[JsonrpcType]]:
+    def _parse_messages(self, request: SanicRequest) -> Union[_JsonrpcType, List[_JsonrpcType]]:
         messages = self._parse_json(request.body)
 
         if isinstance(messages, Response):
@@ -68,7 +74,7 @@ class Jsonrpc:
 
         if isinstance(messages, list):
             if not messages:
-                return Response('2.0', error=INVALID_REQUEST)
+                return _response(error=INVALID_REQUEST)
 
             return [self._parse_message(m) for m in messages]
 
@@ -80,10 +86,10 @@ class Jsonrpc:
         except (TypeError, ValueError) as err:
             # TODO test unserializable response
             logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
-            return self._serialize_response(Response('2.0', error=INTERNAL_ERROR))
+            return self._serialize_outgoing(_response(error=INTERNAL_ERROR))
 
-    def _serialize_response(self, response: Response) -> str:
-        return self._serialize(self.response(response))
+    def _serialize_outgoing(self, outgoing: _Outgoing) -> str:
+        return self._serialize(self.response(outgoing))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
@@ -101,21 +107,21 @@ class Jsonrpc:
 
     async def _call(
             self,
-            message: Message,
-            route: Route,
+            incoming: _Incoming,
+            route: _Route,
             sanic_request: SanicRequest,
             ws: Optional[WebSocketCommonProtocol] = None
     ) -> Optional[Response]:
-        logger.debug("--> %r", message)
+        logger.debug("--> %r", incoming)
 
         args = []
         kwargs = {}
 
         # TODO validate params
-        if isinstance(message.params, dict):
-            kwargs.update(message.params)
-        elif isinstance(message.params, list):
-            args.extend(message.params)
+        if isinstance(incoming.params, dict):
+            kwargs.update(incoming.params)
+        elif isinstance(incoming.params, list):
+            args.extend(incoming.params)
 
         if route.params:
             for name, typ in route.params.items():
@@ -127,7 +133,9 @@ class Jsonrpc:
                 elif typ is Sanic:
                     kwargs[name] = self.app
                 elif typ is Request or typ is Notification:
-                    kwargs[name] = message
+                    kwargs[name] = incoming
+                elif typ is Notifier:
+                    kwargs[name] = self._notifier(ws) if ws else None
 
         result = None
         error = None
@@ -146,7 +154,7 @@ class Jsonrpc:
             error = INVALID_PARAMS
         except Exception as err:
             # TODO test call raise Exception
-            logger.error("%r failed: %s", message, err, exc_info=err)
+            logger.error("%r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
             if isinstance(ret, Error):
@@ -156,45 +164,45 @@ class Jsonrpc:
                     result = validate(route.result, ret, strict=False)
                 except (TypeError, ValueError) as err:
                     # TODO test call invalid result
-                    logger.error("Invalid response to %r: %s", message, err, exc_info=err)
+                    logger.error("Invalid response to %r: %s", incoming, err, exc_info=err)
                     error = INTERNAL_ERROR
             else:
                 result = ret
 
-        if isinstance(message, Request):
-            response = Response('2.0', result=result, error=error, id=message.id)
+        if isinstance(incoming, Request):
+            response = Response('2.0', result=result, error=error, id=incoming.id)
             logger.debug("<-- %r", response)
             return response
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
-        messages = self._parse_messages(sanic_request)
+        incomings = self._parse_messages(sanic_request)
 
-        single = not isinstance(messages, list)
+        single = not isinstance(incomings, list)
 
         if single:
-            messages = [messages]
+            incomings = [incomings]
 
         responses = []
         futures = []
 
-        for message in messages:
-            if isinstance(message, Response):
-                responses.append(message)
+        for incoming in incomings:
+            if isinstance(incoming, Response):
+                responses.append(incoming)
                 continue
 
-            route = self._route(message, is_post=True)
+            route = self._route(incoming, is_post=True)
 
-            if not isinstance(route, Route):
+            if not isinstance(route, _Route):
                 if route:
                     responses.append(route)
                 else:
-                    logger.info("Unhandled %r", message)
+                    logger.info("Unhandled %r", incoming)
 
                 continue
 
-            fut = self._register_call(message, route, sanic_request)
+            fut = self._register_call(incoming, route, sanic_request)
 
-            if isinstance(message, Request):
+            if isinstance(incoming, Request):
                 futures.append(fut)
 
         for response in await gather(*futures):
@@ -204,8 +212,8 @@ class Jsonrpc:
         content_type = 'application/json' if body else 'text/plain'
         return HTTPResponse(body, 207, content_type=content_type)
 
-    def _ws_response(self, ws: WebSocketCommonProtocol, response: Response) -> Future:
-        return ensure_future(ws.send(self._serialize_response(response)))
+    def _ws_outgoing(self, ws: WebSocketCommonProtocol, outgoing: _Outgoing) -> Future:
+        return ensure_future(ws.send(self._serialize_outgoing(outgoing)))
 
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocketCommonProtocol):
         recv = None
@@ -232,34 +240,34 @@ class Jsonrpc:
                     continue
 
                 if isinstance(result, Response):
-                    pending.add(self._ws_response(ws, result))
+                    pending.add(self._ws_outgoing(ws, result))
                     continue
 
                 obj = self._parse_json(result)
 
                 if isinstance(obj, Response):
-                    pending.add(self._ws_response(ws, obj))
+                    pending.add(self._ws_outgoing(ws, obj))
                     continue
 
-                message = self._parse_message(obj)
+                incoming = self._parse_message(obj)
 
-                if isinstance(message, Response):
-                    pending.add(self._ws_response(ws, message))
+                if isinstance(incoming, Response):
+                    pending.add(self._ws_outgoing(ws, incoming))
                     continue
 
-                route = self._route(message, is_post=False)
+                route = self._route(incoming, is_post=False)
 
-                if not isinstance(route, Route):
+                if not isinstance(route, _Route):
                     if route:
-                        pending.add(self._ws_response(ws, route))
+                        pending.add(self._ws_outgoing(ws, route))
                     else:
-                        logger.info("Unhandled %r", message)
+                        logger.info("Unhandled %r", incoming)
 
                     continue
 
-                fut = self._register_call(message, route, sanic_request, ws)
+                fut = self._register_call(incoming, route, sanic_request, ws)
 
-                if isinstance(message, Request):
+                if isinstance(incoming, Request):
                     pending.add(fut)
 
     async def _processing(self):
@@ -275,6 +283,12 @@ class Jsonrpc:
             while not calls.empty():
                 # TODO test stop Sanic while call is processing
                 await calls.get_nowait()
+
+    def _notifier(self, ws) -> Notifier:
+        def notifier(notification: Notification):
+            # TODO save futures
+            self._ws_outgoing(ws, notification)
+        return notifier
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
         self.app = app
@@ -313,7 +327,7 @@ class Jsonrpc:
             if name_:
                 func.__name__ = name_
 
-            route = Route(
+            route = _Route(
                 name_ or func.__name__,
                 func,
                 *self._annotations(getattr(func, '__annotations__', {}), annotations)
