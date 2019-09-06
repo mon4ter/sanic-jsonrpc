@@ -285,6 +285,7 @@ class Jsonrpc:
                 await calls.get_nowait()
 
     def _notifier(self, ws) -> Notifier:
+        # TODO test outgoing notifications
         def notifier(notification: Notification):
             # TODO save futures
             self._ws_outgoing(ws, notification)
@@ -380,5 +381,3 @@ class Jsonrpc:
         obj = dict(response)
         obj.setdefault('id', None)
         return obj
-
-    # TODO streaming notifications
