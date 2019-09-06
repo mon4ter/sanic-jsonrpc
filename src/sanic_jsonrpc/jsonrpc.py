@@ -56,10 +56,7 @@ class Jsonrpc:
             return Request(**message)
         except (TypeError, ModelError) as err:
             if isinstance(err, ModelAttributeError) and err.kwargs['attr'] == 'id':
-                try:
-                    return Notification(**message)
-                except (TypeError, ModelError):
-                    pass
+                return Notification(**message)
 
             return Response('2.0', error=INVALID_REQUEST)
 
@@ -81,6 +78,7 @@ class Jsonrpc:
         try:
             return dumps(obj)
         except (TypeError, ValueError) as err:
+            # TODO test unserializable response
             logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
             return self._serialize_response(Response('2.0', error=INTERNAL_ERROR))
 
@@ -121,6 +119,7 @@ class Jsonrpc:
 
         if route.params:
             for name, typ in route.params.items():
+                # TODO test special annotations
                 if typ is SanicRequest:
                     kwargs[name] = sanic_request
                 elif typ is WebSocketCommonProtocol:
@@ -137,19 +136,26 @@ class Jsonrpc:
             ret = route.func(*args, **kwargs)
 
             if iscoroutine(ret):
+                # TODO test async call
                 ret = await ret
         except Error as err:
+            # TODO test call raise Error
             error = err
         except TypeError:
+            # TODO test call with invalid params
             error = INVALID_PARAMS
         except Exception as err:
+            # TODO test call raise Exception
             logger.error("%r failed: %s", message, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
-            if route.result:
+            if isinstance(ret, Error):
+                error = ret
+            elif route.result:
                 try:
                     result = validate(route.result, ret, strict=False)
                 except (TypeError, ValueError) as err:
+                    # TODO test call invalid result
                     logger.error("Invalid response to %r: %s", message, err, exc_info=err)
                     error = INTERNAL_ERROR
             else:
@@ -267,6 +273,7 @@ class Jsonrpc:
             pass
         finally:
             while not calls.empty():
+                # TODO test stop Sanic while call is processing
                 await calls.get_nowait()
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
@@ -300,7 +307,7 @@ class Jsonrpc:
             **annotations
     ) -> Callable:
         if isinstance(name_, Callable):
-            return self.__call__(name_.__name__, is_post_=is_post_, is_request_=is_request_)(name_)
+            return self.__call__(is_post_=is_post_, is_request_=is_request_)(name_)
 
         def deco(func: Callable) -> Callable:
             if name_:

@@ -15,43 +15,8 @@ app = Sanic()
 jsonrpc = Jsonrpc(app, post_route='/api/rpc/post', ws_route='/api/rpc/ws')
 
 @jsonrpc
-def add(a: int, b: int) -> int:
-    return a + b
-
-# Same as @jsonrpc
-@jsonrpc.method
 def sub(a: int, b: int) -> int:
     return a - b
-
-# Override method name
-@jsonrpc.method('Mul')
-def mul(a: int, b: int) -> int:
-    return a * b
-
-# POST-only method
-@jsonrpc.post
-def div(a: int, b: int) -> int:
-    return a // b
-
-# WebSocket-only method
-@jsonrpc.ws
-def echo(msg: str) -> str:
-    return msg * 2
-
-class Pair:
-    def __init__(self, first: int, second: int):
-        self.first = int(first)
-        self.second = int(second)
-
-# Annotation-aware params/result parsing
-@jsonrpc
-async def concat(pair: Pair) -> str:
-    return '{}.{}'.format(pair.first, pair.second)
-
-# Annotation override
-@jsonrpc('Concat', p=Pair, result=str)
-async def con(p):
-    return '{}.{}'.format(p.first, p.second)
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=8000)
