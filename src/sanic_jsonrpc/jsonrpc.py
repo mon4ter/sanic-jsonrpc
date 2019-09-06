@@ -33,8 +33,7 @@ class Jsonrpc:
         annotations.update(extra)
         return annotations or None, result
 
-    # TODO Routing tests
-    def _route(self, is_post: bool, message: Message) -> Optional[Union[Route, Response]]:
+    def _route(self, message: Message, is_post: bool) -> Optional[Union[Route, Response]]:
         is_request = isinstance(message, Request)
         route = self._routes.get((is_post, is_request, message.method))
 
@@ -177,7 +176,7 @@ class Jsonrpc:
                 responses.append(message)
                 continue
 
-            route = self._route(True, message)
+            route = self._route(message, is_post=True)
 
             if not isinstance(route, Route):
                 if route:
@@ -242,7 +241,7 @@ class Jsonrpc:
                     pending.add(self._ws_response(ws, message))
                     continue
 
-                route = self._route(False, message)
+                route = self._route(message, is_post=False)
 
                 if not isinstance(route, Route):
                     if route:
