@@ -125,7 +125,6 @@ class Jsonrpc:
 
         if route.params:
             for name, typ in route.params.items():
-                # TODO test special annotations
                 if typ is SanicRequest:
                     kwargs[name] = sanic_request
                 elif typ is WebSocketCommonProtocol:
@@ -133,6 +132,7 @@ class Jsonrpc:
                 elif typ is Sanic:
                     kwargs[name] = self.app
                 elif typ is Request or typ is Notification:
+                    # TODO test notification
                     kwargs[name] = incoming
                 elif typ is Notifier:
                     kwargs[name] = self._notifier(ws) if ws else None
@@ -144,16 +144,12 @@ class Jsonrpc:
             ret = route.func(*args, **kwargs)
 
             if iscoroutine(ret):
-                # TODO test async call
                 ret = await ret
         except Error as err:
-            # TODO test call raise Error
             error = err
         except TypeError:
-            # TODO test call with invalid params
             error = INVALID_PARAMS
         except Exception as err:
-            # TODO test call raise Exception
             logger.error("%r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
@@ -163,7 +159,6 @@ class Jsonrpc:
                 try:
                     result = validate(route.result, ret, strict=False)
                 except (TypeError, ValueError) as err:
-                    # TODO test call invalid result
                     logger.error("Invalid response to %r: %s", incoming, err, exc_info=err)
                     error = INTERNAL_ERROR
             else:
@@ -231,6 +226,7 @@ class Jsonrpc:
                 err = fut.exception()
 
                 if err:
+                    # TODO test exception in call
                     logger.error("%s", err, exc_info=err)
                     continue
 
@@ -285,8 +281,8 @@ class Jsonrpc:
                 await calls.get_nowait()
 
     def _notifier(self, ws) -> Notifier:
-        # TODO test outgoing notifications
         def notifier(notification: Notification):
+            # TODO test outgoing notifications
             # TODO save futures
             self._ws_outgoing(ws, notification)
         return notifier
