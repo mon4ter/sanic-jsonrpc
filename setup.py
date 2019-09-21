@@ -15,7 +15,7 @@ setup(
     package_dir={'': 'src'},
     install_requires=[
         'Sanic',
-        'fashionable>=0.8.5',
+        'fashionable>=0.9.0',
         'ujson',
     ],
     setup_requires=['pytest-runner'],
@@ -31,7 +31,7 @@ setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     classifiers=[
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
         'Programming Language :: Python :: 3.7',

@@ -12,7 +12,6 @@ class _Jsonrpc(Model):
         super().__init__(*args, **kwargs)
 
         if self.jsonrpc != '2.0':
-            # TODO test invalid jsonrpc version
             raise ModelValueError(
                 'Invalid %(model)s: invalid attribute jsonrpc: MUST be exactly "2.0"', model=self.__class__.__name__
             )

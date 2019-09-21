@@ -4,7 +4,7 @@ from functools import partial
 from logging import getLogger
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
-from fashionable import ModelAttributeError, ModelError, validate
+from fashionable import ModelAttributeError, ModelError, UNSET, validate
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
@@ -86,19 +86,16 @@ class Jsonrpc:
         except (TypeError, ValueError) as err:
             # TODO test unserializable response
             logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
-            return self._serialize_outgoing(_response(error=INTERNAL_ERROR))
-
-    def _serialize_outgoing(self, outgoing: _Outgoing) -> str:
-        return self._serialize(self.response(outgoing))
+            return self._serialize(_response(error=INTERNAL_ERROR))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
             return None
 
         if single:
-            return self._serialize(self.response(responses[0]))
+            return self._serialize(dict(responses[0]))
 
-        return self._serialize([self.response(r) for r in responses])
+        return self._serialize([dict(r) for r in responses])
 
     def _register_call(self, *args, **kwargs) -> Future:
         fut = shield(self._call(*args, **kwargs))
@@ -137,8 +134,8 @@ class Jsonrpc:
                 elif typ is Notifier:
                     kwargs[name] = self._notifier(ws) if ws else None
 
-        result = None
-        error = None
+        result = UNSET
+        error = UNSET
 
         try:
             ret = route.func(*args, **kwargs)
@@ -208,7 +205,7 @@ class Jsonrpc:
         return HTTPResponse(body, 207, content_type=content_type)
 
     def _ws_outgoing(self, ws: WebSocketCommonProtocol, outgoing: _Outgoing) -> Future:
-        return ensure_future(ws.send(self._serialize_outgoing(outgoing)))
+        return ensure_future(ws.send(self._serialize(dict(outgoing))))
 
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocketCommonProtocol):
         recv = None
@@ -371,9 +368,3 @@ class Jsonrpc:
 
     def ws_notification(self, name_: Optional[str] = None, **annotations) -> Callable:
         return self.__call__(name_, is_post_=False, is_request_=False, **annotations)
-
-    @staticmethod
-    def response(response: Response) -> dict:
-        obj = dict(response)
-        obj.setdefault('id', None)
-        return obj

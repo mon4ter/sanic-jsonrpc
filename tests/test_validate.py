@@ -97,6 +97,9 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'app', 'params': [], 'id': 10},
     {'jsonrpc': '2.0', 'result': True, 'id': 10}
+), (
+    {'jsonrpc': '2.1', 'method': 'app', 'params': [], 'id': 11},
+    {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': "Invalid Request"}, 'id': None}
 )])
 async def test_post(test_cli, in_: dict, out: dict):
     response = await test_cli.post('/post', json=in_)
