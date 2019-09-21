@@ -11,7 +11,7 @@ with open('README.md') as f:
 setup(
     name='sanic-jsonrpc',
     version=version,
-    packages=['sanic_jsonrpc'],
+    packages=['sanic_jsonrpc', 'sanic_jsonrpc.models'],
     package_dir={'': 'src'},
     install_requires=[
         'Sanic',
