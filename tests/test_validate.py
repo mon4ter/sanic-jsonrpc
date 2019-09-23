@@ -59,6 +59,10 @@ def app():
     def notifier(n: Notifier):
         return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
 
+    @jsonrpc
+    def multi_word(word: str, multi: int) -> str:
+        return word * multi
+
     return app_
 
 
@@ -100,6 +104,15 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.1', 'method': 'app', 'params': [], 'id': 11},
     {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': "Invalid Request"}, 'id': None}
+), (
+    {'jsonrpc': '2.0', 'method': 'add', 'params': ['1', '2', '3'], 'id': 12},
+    {'jsonrpc': '2.0', 'result': 6, 'id': 12}
+), (
+    {'jsonrpc': '2.0', 'method': 'multi_word', 'params': ['a', '3'], 'id': 13},
+    {'jsonrpc': '2.0', 'result': 'aaa', 'id': 13}
+), (
+    {'jsonrpc': '2.0', 'method': 'multi_word', 'params': [5, 5], 'id': 15},
+    {'jsonrpc': '2.0', 'result': '55555', 'id': 15}
 )])
 async def test_post(test_cli, in_: dict, out: dict):
     response = await test_cli.post('/post', json=in_)

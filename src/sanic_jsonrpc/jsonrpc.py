@@ -105,52 +105,90 @@ class Jsonrpc:
         args = []
         kwargs = {}
 
-        # TODO validate params
-        if isinstance(incoming.params, dict):
-            kwargs.update(incoming.params)
-        elif isinstance(incoming.params, list):
-            args.extend(incoming.params)
+        route_args = route.args.copy()
 
-        if route.args:
-            for name, typ in route.args.items():
-                if typ is SanicRequest:
-                    kwargs[name] = sanic_request
-                elif typ is WebSocketCommonProtocol:
-                    kwargs[name] = ws
-                elif typ is Sanic:
-                    kwargs[name] = self.app
-                elif typ is Request or typ is Notification:
-                    # TODO test notification
-                    kwargs[name] = incoming
-                elif typ is Notifier:
-                    kwargs[name] = self._notifier(ws) if ws else None
+        for name, typ in route.args.items():
+            special = True
 
-        result = UNSET
+            if typ is SanicRequest:
+                kwargs[name] = sanic_request
+            elif typ is WebSocketCommonProtocol:
+                kwargs[name] = ws
+            elif typ is Sanic:
+                kwargs[name] = self.app
+            elif typ is Request or typ is Notification:
+                # TODO test notification
+                kwargs[name] = incoming
+            elif typ is Notifier:
+                kwargs[name] = self._notifier(ws) if ws else None
+            else:
+                special = False
+
+            if special:
+                del route_args[name]
+
         error = UNSET
 
-        try:
-            ret = route.func(*args, **kwargs)
+        if isinstance(incoming.params, dict):
+            # TODO validate keyword params
+            kwargs.update(incoming.params)
+        elif isinstance(incoming.params, list):
+            params = incoming.params.copy()
 
-            if iscoroutine(ret):
-                ret = await ret
-        except Error as err:
-            error = err
-        except TypeError:
-            error = INVALID_PARAMS
-        except Exception as err:
-            logger.error("%r failed: %s", incoming, err, exc_info=err)
-            error = INTERNAL_ERROR
-        else:
-            if isinstance(ret, Error):
-                error = ret
-            elif route.result:
+            for index, typ in enumerate(route_args.values()):
                 try:
-                    result = validate(route.result, ret, strict=False)
+                    value = incoming.params[index]
+                except IndexError:
+                    error = INVALID_PARAMS
+                    break
+                else:
+                    params.remove(value)
+
+                try:
+                    args.append(validate(typ, value))
                 except (TypeError, ValueError) as err:
-                    logger.error("Invalid response to %r: %s", incoming, err, exc_info=err)
-                    error = INTERNAL_ERROR
+                    # TODO test invalid positional argument
+                    logger.debug("Invalid %r: %s", incoming, err)
+                    error = INVALID_PARAMS
+                    break
+
+            if params:
+                if route.varargs:
+                    try:
+                        args.extend(validate(route.varargs, v) for v in params)
+                    except (TypeError, ValueError) as err:
+                        # TODO test invalid vararg
+                        logger.debug("Invalid %r: %s", incoming, err)
+                        error = INVALID_PARAMS
+                else:
+                    # TODO test too many positional arguments
+                    logger.debug("Invalid %r: too many arguments", incoming)
+                    error = INVALID_PARAMS
+
+        result = UNSET
+
+        if error is UNSET:
+            try:
+                ret = route.func(*args, **kwargs)
+
+                if iscoroutine(ret):
+                    ret = await ret
+            except Error as err:
+                error = err
+            except Exception as err:
+                logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error = INTERNAL_ERROR
             else:
-                result = ret
+                if isinstance(ret, Error):
+                    error = ret
+                elif route.result:
+                    try:
+                        result = validate(route.result, ret)
+                    except (TypeError, ValueError) as err:
+                        logger.error("Invalid response to %r: %s", incoming, err, exc_info=err)
+                        error = INTERNAL_ERROR
+                else:
+                    result = ret
 
         if isinstance(incoming, Request):
             response = Response('2.0', result=result, error=error, id=incoming.id)
