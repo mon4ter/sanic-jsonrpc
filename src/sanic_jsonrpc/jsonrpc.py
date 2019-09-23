@@ -1,8 +1,7 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, iscoroutine, shield, wait
-from collections import namedtuple
 from functools import partial
 from logging import getLogger
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET, validate
 from sanic import Sanic
@@ -11,6 +10,7 @@ from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
 
+from ._route import _Route
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
 
@@ -20,11 +20,9 @@ __all__ = [
     'Notifier',
 ]
 
-_Annotations = Dict[str, type]
 _Incoming = Union[Request, Notification]
 _Outgoing = Union[Response, Notification]
 _JsonrpcType = Union[_Incoming, _Outgoing]
-_Route = namedtuple('Route', ('name', 'func', 'params', 'result'))
 _response = partial(Response, '2.0')
 
 Notifier = Callable[[Notification], None]
@@ -32,13 +30,6 @@ logger = getLogger(__name__)
 
 
 class Jsonrpc:
-    @staticmethod
-    def _annotations(annotations: _Annotations, extra: _Annotations) -> Tuple[Optional[_Annotations], Optional[type]]:
-        result = annotations.pop('return', None)
-        result = extra.pop('result', result)
-        annotations.update(extra)
-        return annotations or None, result
-
     def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[_Route, Response]]:
         is_request = isinstance(incoming, Request)
         route = self._routes.get((is_post, is_request, incoming.method))
@@ -120,8 +111,8 @@ class Jsonrpc:
         elif isinstance(incoming.params, list):
             args.extend(incoming.params)
 
-        if route.params:
-            for name, typ in route.params.items():
+        if route.args:
+            for name, typ in route.args.items():
                 if typ is SanicRequest:
                     kwargs[name] = sanic_request
                 elif typ is WebSocketCommonProtocol:
@@ -318,14 +309,7 @@ class Jsonrpc:
             return self.__call__(is_post_=is_post_, is_request_=is_request_)(name_)
 
         def deco(func: Callable) -> Callable:
-            if name_:
-                func.__name__ = name_
-
-            route = _Route(
-                name_ or func.__name__,
-                func,
-                *self._annotations(getattr(func, '__annotations__', {}), annotations)
-            )
+            route = _Route.from_inspect(func, name_, annotations)
 
             if is_post_ is None and is_request_ is None:
                 self._routes[True, True, route.name] = route
