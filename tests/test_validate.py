@@ -113,6 +113,15 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'multi_word', 'params': [5, 5], 'id': 15},
     {'jsonrpc': '2.0', 'result': '55555', 'id': 15}
+), (
+    {'jsonrpc': '2.0', 'method': 'add', 'params': ['1', '2', 'three'], 'id': 16},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 16}
+), (
+    {'jsonrpc': '2.0', 'method': 'to_pair', 'params': ['one'], 'id': 17},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 17}
+), (
+    {'jsonrpc': '2.0', 'method': 'to_pair', 'params': [1, 2], 'id': 18},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 18}
 )])
 async def test_post(test_cli, in_: dict, out: dict):
     response = await test_cli.post('/post', json=in_)

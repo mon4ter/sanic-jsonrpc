@@ -29,17 +29,8 @@ Notifier = Callable[[Notification], None]
 logger = getLogger(__name__)
 
 
+# TODO middleware
 class Jsonrpc:
-    def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[_Route, Response]]:
-        is_request = isinstance(incoming, Request)
-        route = self._routes.get((is_post, is_request, incoming.method))
-
-        if route:
-            return route
-
-        if is_request:
-            return _response(error=METHOD_NOT_FOUND, id=incoming.id)
-
     @staticmethod
     def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
         try:
@@ -87,6 +78,16 @@ class Jsonrpc:
             return self._serialize(dict(responses[0]))
 
         return self._serialize([dict(r) for r in responses])
+
+    def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[_Route, Response]]:
+        is_request = isinstance(incoming, Request)
+        route = self._routes.get((is_post, is_request, incoming.method))
+
+        if route:
+            return route
+
+        if is_request:
+            return _response(error=METHOD_NOT_FOUND, id=incoming.id)
 
     def _register_call(self, *args, **kwargs) -> Future:
         fut = shield(self._call(*args, **kwargs))
@@ -147,7 +148,6 @@ class Jsonrpc:
                 try:
                     args.append(validate(typ, value))
                 except (TypeError, ValueError) as err:
-                    # TODO test invalid positional argument
                     logger.debug("Invalid %r: %s", incoming, err)
                     error = INVALID_PARAMS
                     break
@@ -157,11 +157,9 @@ class Jsonrpc:
                     try:
                         args.extend(validate(route.varargs, v) for v in params)
                     except (TypeError, ValueError) as err:
-                        # TODO test invalid vararg
                         logger.debug("Invalid %r: %s", incoming, err)
                         error = INVALID_PARAMS
                 else:
-                    # TODO test too many positional arguments
                     logger.debug("Invalid %r: too many arguments", incoming)
                     error = INVALID_PARAMS
 
