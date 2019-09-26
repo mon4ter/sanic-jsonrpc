@@ -49,7 +49,6 @@ def app():
 
     @jsonrpc.ws
     def ws(ws_: WebSocketCommonProtocol):
-        print(ws_)
         return isinstance(ws_, WebSocketCommonProtocol)
 
     @jsonrpc.post
@@ -58,7 +57,6 @@ def app():
 
     @jsonrpc.ws
     def notifier(n: Notifier):
-        print(n, n.__qualname__)
         return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
 
     @jsonrpc
