@@ -10,7 +10,7 @@ from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
 
-from ._route import _Route
+from ._route import Notifier, _Route
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
 
@@ -25,7 +25,6 @@ _Outgoing = Union[Response, Notification]
 _JsonrpcType = Union[_Incoming, _Outgoing]
 _response = partial(Response, '2.0')
 
-Notifier = Callable[[Notification], None]
 logger = getLogger(__name__)
 
 
@@ -106,11 +105,7 @@ class Jsonrpc:
         args = []
         kwargs = {}
 
-        route_args = route.args.copy()
-
         for name, typ in route.args.items():
-            special = True
-
             if typ is SanicRequest:
                 kwargs[name] = sanic_request
             elif typ is WebSocketCommonProtocol:
@@ -122,46 +117,28 @@ class Jsonrpc:
                 kwargs[name] = incoming
             elif typ is Notifier:
                 kwargs[name] = self._notifier(ws) if ws else None
-            else:
-                special = False
-
-            if special:
-                del route_args[name]
 
         error = UNSET
 
         if isinstance(incoming.params, dict):
-            # TODO validate keyword params
+            if any(k in incoming.params for k in kwargs):
+                logger.debug("Invalid %r: params conflicts with special arguments", incoming)
+                error = INVALID_PARAMS
+
             kwargs.update(incoming.params)
         elif isinstance(incoming.params, list):
-            params = incoming.params.copy()
+            args.extend(incoming.params)
+        elif incoming.params is not UNSET:
+            args.append(incoming.params)
 
-            for index, typ in enumerate(route_args.values()):
-                try:
-                    value = incoming.params[index]
-                except IndexError:
-                    error = INVALID_PARAMS
-                    break
-                else:
-                    params.remove(value)
-
-                try:
-                    args.append(validate(typ, value))
-                except (TypeError, ValueError) as err:
-                    logger.debug("Invalid %r: %s", incoming, err)
-                    error = INVALID_PARAMS
-                    break
-
-            if params:
-                if route.varargs:
-                    try:
-                        args.extend(validate(route.varargs, v) for v in params)
-                    except (TypeError, ValueError) as err:
-                        logger.debug("Invalid %r: %s", incoming, err)
-                        error = INVALID_PARAMS
-                else:
-                    logger.debug("Invalid %r: too many arguments", incoming)
-                    error = INVALID_PARAMS
+        try:
+            args, kwargs = route.validate(args, kwargs)
+        except (TypeError, ValueError) as err:
+            logger.debug("Invalid %r: %s", incoming, err)
+            error = INVALID_PARAMS
+        except KeyError as err:
+            logger.debug("Invalid %r: missing required argument %s", incoming, err)
+            error = INVALID_PARAMS
 
         result = UNSET
 

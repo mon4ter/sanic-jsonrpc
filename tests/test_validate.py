@@ -49,6 +49,7 @@ def app():
 
     @jsonrpc.ws
     def ws(ws_: WebSocketCommonProtocol):
+        print(ws_)
         return isinstance(ws_, WebSocketCommonProtocol)
 
     @jsonrpc.post
@@ -57,6 +58,7 @@ def app():
 
     @jsonrpc.ws
     def notifier(n: Notifier):
+        print(n, n.__qualname__)
         return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
 
     @jsonrpc
@@ -87,22 +89,22 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'method': 'invalid_response', 'params': [12], 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 5}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sanic_request', 'params': [], 'id': 6},
+    {'jsonrpc': '2.0', 'method': 'sanic_request', 'id': 6},
     {'jsonrpc': '2.0', 'result': True, 'id': 6}
 ), (
-    {'jsonrpc': '2.0', 'method': 'request', 'params': [], 'id': 7},
+    {'jsonrpc': '2.0', 'method': 'request', 'id': 7},
     {'jsonrpc': '2.0', 'result': True, 'id': 7}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws', 'params': [], 'id': 8},
+    {'jsonrpc': '2.0', 'method': 'ws', 'id': 8},
     {'jsonrpc': '2.0', 'result': True, 'id': 8}
 ), (
-    {'jsonrpc': '2.0', 'method': 'notifier', 'params': [], 'id': 9},
+    {'jsonrpc': '2.0', 'method': 'notifier', 'id': 9},
     {'jsonrpc': '2.0', 'result': True, 'id': 9}
 ), (
-    {'jsonrpc': '2.0', 'method': 'app', 'params': [], 'id': 10},
+    {'jsonrpc': '2.0', 'method': 'app', 'id': 10},
     {'jsonrpc': '2.0', 'result': True, 'id': 10}
 ), (
-    {'jsonrpc': '2.1', 'method': 'app', 'params': [], 'id': 11},
+    {'jsonrpc': '2.1', 'method': 'app', 'id': 11},
     {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': "Invalid Request"}, 'id': None}
 ), (
     {'jsonrpc': '2.0', 'method': 'add', 'params': ['1', '2', '3'], 'id': 12},
@@ -129,10 +131,10 @@ async def test_post(test_cli, in_: dict, out: dict):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'ws', 'params': [], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'ws', 'id': 1},
     {'jsonrpc': '2.0', 'result': True, 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'notifier', 'params': [], 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'notifier', 'id': 2},
     {'jsonrpc': '2.0', 'result': True, 'id': 2}
 )])
 async def test_ws(test_cli, in_: dict, out: dict):

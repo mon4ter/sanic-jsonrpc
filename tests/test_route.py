@@ -91,58 +91,58 @@ def test_cli(loop, app, sanic_client):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'default', 'params': [], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'default', 'id': 1},
     {'jsonrpc': '2.0', 'result': 'default', 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Default', 'params': [], 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'Default', 'id': 2},
     {'jsonrpc': '2.0', 'result': 'Default', 'id': 2}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post', 'params': [], 'id': 3},
+    {'jsonrpc': '2.0', 'method': 'post', 'id': 3},
     {'jsonrpc': '2.0', 'result': 'post', 'id': 3}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Post', 'params': [], 'id': 4},
+    {'jsonrpc': '2.0', 'method': 'Post', 'id': 4},
     {'jsonrpc': '2.0', 'result': 'Post', 'id': 4}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws', 'params': [], 'id': 5},
+    {'jsonrpc': '2.0', 'method': 'ws', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 5}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Ws', 'params': [], 'id': 6},
+    {'jsonrpc': '2.0', 'method': 'Ws', 'id': 6},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 6}
 ), (
-    {'jsonrpc': '2.0', 'method': 'request', 'params': [], 'id': 7},
+    {'jsonrpc': '2.0', 'method': 'request', 'id': 7},
     {'jsonrpc': '2.0', 'result': 'request', 'id': 7}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Request', 'params': [], 'id': 8},
+    {'jsonrpc': '2.0', 'method': 'Request', 'id': 8},
     {'jsonrpc': '2.0', 'result': 'Request', 'id': 8}
 ), (
-    {'jsonrpc': '2.0', 'method': 'notification', 'params': [], 'id': 9},
+    {'jsonrpc': '2.0', 'method': 'notification', 'id': 9},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 9}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Notification', 'params': [], 'id': 10},
+    {'jsonrpc': '2.0', 'method': 'Notification', 'id': 10},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 10}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post_request', 'params': [], 'id': 11},
+    {'jsonrpc': '2.0', 'method': 'post_request', 'id': 11},
     {'jsonrpc': '2.0', 'result': 'post_request', 'id': 11}
 ), (
-    {'jsonrpc': '2.0', 'method': 'PostRequest', 'params': [], 'id': 12},
+    {'jsonrpc': '2.0', 'method': 'PostRequest', 'id': 12},
     {'jsonrpc': '2.0', 'result': 'PostRequest', 'id': 12}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws_request', 'params': [], 'id': 13},
+    {'jsonrpc': '2.0', 'method': 'ws_request', 'id': 13},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 13}
 ), (
-    {'jsonrpc': '2.0', 'method': 'WsRequest', 'params': [], 'id': 14},
+    {'jsonrpc': '2.0', 'method': 'WsRequest', 'id': 14},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 14}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post_notification', 'params': [], 'id': 15},
+    {'jsonrpc': '2.0', 'method': 'post_notification', 'id': 15},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 15}
 ), (
-    {'jsonrpc': '2.0', 'method': 'PostNotification', 'params': [], 'id': 16},
+    {'jsonrpc': '2.0', 'method': 'PostNotification', 'id': 16},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 16}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws_notification', 'params': [], 'id': 17},
+    {'jsonrpc': '2.0', 'method': 'ws_notification', 'id': 17},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 17}
 ), (
-    {'jsonrpc': '2.0', 'method': 'WsNotification', 'params': [], 'id': 18},
+    {'jsonrpc': '2.0', 'method': 'WsNotification', 'id': 18},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 18}
 )])
 async def test_post_request(test_cli, in_: dict, out: dict):
@@ -152,58 +152,58 @@ async def test_post_request(test_cli, in_: dict, out: dict):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'default', 'params': [], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'default', 'id': 1},
     {'jsonrpc': '2.0', 'result': 'default', 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Default', 'params': [], 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'Default', 'id': 2},
     {'jsonrpc': '2.0', 'result': 'Default', 'id': 2}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post', 'params': [], 'id': 3},
+    {'jsonrpc': '2.0', 'method': 'post', 'id': 3},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 3}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Post', 'params': [], 'id': 4},
+    {'jsonrpc': '2.0', 'method': 'Post', 'id': 4},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 4}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws', 'params': [], 'id': 5},
+    {'jsonrpc': '2.0', 'method': 'ws', 'id': 5},
     {'jsonrpc': '2.0', 'result': 'ws', 'id': 5}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Ws', 'params': [], 'id': 6},
+    {'jsonrpc': '2.0', 'method': 'Ws', 'id': 6},
     {'jsonrpc': '2.0', 'result': 'Ws', 'id': 6}
 ), (
-    {'jsonrpc': '2.0', 'method': 'request', 'params': [], 'id': 7},
+    {'jsonrpc': '2.0', 'method': 'request', 'id': 7},
     {'jsonrpc': '2.0', 'result': 'request', 'id': 7}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Request', 'params': [], 'id': 8},
+    {'jsonrpc': '2.0', 'method': 'Request', 'id': 8},
     {'jsonrpc': '2.0', 'result': 'Request', 'id': 8}
 ), (
-    {'jsonrpc': '2.0', 'method': 'notification', 'params': [], 'id': 9},
+    {'jsonrpc': '2.0', 'method': 'notification', 'id': 9},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 9}
 ), (
-    {'jsonrpc': '2.0', 'method': 'Notification', 'params': [], 'id': 10},
+    {'jsonrpc': '2.0', 'method': 'Notification', 'id': 10},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 10}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post_request', 'params': [], 'id': 11},
+    {'jsonrpc': '2.0', 'method': 'post_request', 'id': 11},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 11}
 ), (
-    {'jsonrpc': '2.0', 'method': 'PostRequest', 'params': [], 'id': 12},
+    {'jsonrpc': '2.0', 'method': 'PostRequest', 'id': 12},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 12}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws_request', 'params': [], 'id': 13},
+    {'jsonrpc': '2.0', 'method': 'ws_request', 'id': 13},
     {'jsonrpc': '2.0', 'result': 'ws_request', 'id': 13}
 ), (
-    {'jsonrpc': '2.0', 'method': 'WsRequest', 'params': [], 'id': 14},
+    {'jsonrpc': '2.0', 'method': 'WsRequest', 'id': 14},
     {'jsonrpc': '2.0', 'result': 'WsRequest', 'id': 14}
 ), (
-    {'jsonrpc': '2.0', 'method': 'post_notification', 'params': [], 'id': 15},
+    {'jsonrpc': '2.0', 'method': 'post_notification', 'id': 15},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 15}
 ), (
-    {'jsonrpc': '2.0', 'method': 'PostNotification', 'params': [], 'id': 16},
+    {'jsonrpc': '2.0', 'method': 'PostNotification', 'id': 16},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 16}
 ), (
-    {'jsonrpc': '2.0', 'method': 'ws_notification', 'params': [], 'id': 17},
+    {'jsonrpc': '2.0', 'method': 'ws_notification', 'id': 17},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 17}
 ), (
-    {'jsonrpc': '2.0', 'method': 'WsNotification', 'params': [], 'id': 18},
+    {'jsonrpc': '2.0', 'method': 'WsNotification', 'id': 18},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 18}
 )])
 async def test_ws_request(test_cli, in_: dict, out: dict):

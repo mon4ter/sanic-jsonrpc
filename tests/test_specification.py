@@ -12,6 +12,7 @@ from sanic_jsonrpc import Jsonrpc
 
 
 def lists_equal_unordered(self: list, other: list) -> bool:
+    print(self, other)
     return all(map(partial(contains, other), self)) and all(map(partial(contains, self), other))
 
 

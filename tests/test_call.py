@@ -41,19 +41,19 @@ def test_cli(loop, app, sanic_client):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'awaitable', 'params': [], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'awaitable', 'id': 1},
     {'jsonrpc': '2.0', 'result': 'awaitable', 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'return_error', 'params': [], 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'return_error', 'id': 2},
     {'jsonrpc': '2.0', 'error': {'code': -11111, 'message': "The Error"}, 'id': 2}
 ), (
-    {'jsonrpc': '2.0', 'method': 'raise_error', 'params': [], 'id': 3},
+    {'jsonrpc': '2.0', 'method': 'raise_error', 'id': 3},
     {'jsonrpc': '2.0', 'error': {'code': -12345, 'message': "Some error"}, 'id': 3}
 ), (
-    {'jsonrpc': '2.0', 'method': 'invalid_params', 'params': [], 'id': 4},
+    {'jsonrpc': '2.0', 'method': 'invalid_params', 'id': 4},
     {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 4}
 ), (
-    {'jsonrpc': '2.0', 'method': 'raise_exception', 'params': [], 'id': 5},
+    {'jsonrpc': '2.0', 'method': 'raise_exception', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 5}
 )])
 async def test_call(test_cli, in_: dict, out: dict):
