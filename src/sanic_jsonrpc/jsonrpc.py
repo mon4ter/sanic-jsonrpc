@@ -10,7 +10,7 @@ from sanic.response import HTTPResponse
 from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
 
-from ._route import Notifier, _Route
+from ._route import _Route
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
 
@@ -26,6 +26,7 @@ _JsonrpcType = Union[_Incoming, _Outgoing]
 _response = partial(Response, '2.0')
 
 logger = getLogger(__name__)
+Notifier = Callable[[Notification], None]
 
 
 # TODO middleware
@@ -103,36 +104,54 @@ class Jsonrpc:
         logger.debug("--> %r", incoming)
 
         args = []
+        pre_kwargs = {}
         kwargs = {}
 
         for name, typ in route.args.items():
             if typ is SanicRequest:
-                kwargs[name] = sanic_request
+                pre_kwargs[name] = sanic_request
             elif typ is WebSocketCommonProtocol:
-                kwargs[name] = ws
+                pre_kwargs[name] = ws
             elif typ is Sanic:
-                kwargs[name] = self.app
+                pre_kwargs[name] = self.app
             elif typ is Request or typ is Notification:
                 # TODO test notification
-                kwargs[name] = incoming
+                pre_kwargs[name] = incoming
             elif typ is Notifier:
-                kwargs[name] = self._notifier(ws) if ws else None
+                pre_kwargs[name] = self._notifier(ws) if ws else None
+
+        specials = set(pre_kwargs)
 
         error = UNSET
 
         if isinstance(incoming.params, dict):
-            if any(k in incoming.params for k in kwargs):
+            if any(k in incoming.params for k in specials):
                 logger.debug("Invalid %r: params conflicts with special arguments", incoming)
                 error = INVALID_PARAMS
 
-            kwargs.update(incoming.params)
+            pre_kwargs.update(incoming.params)
         elif isinstance(incoming.params, list):
             args.extend(incoming.params)
         elif incoming.params is not UNSET:
             args.append(incoming.params)
 
         try:
-            args, kwargs = route.validate(args, kwargs)
+            # TODO test args after specials
+            for name, value in zip((n for n in route.args if n not in specials), args.copy()):
+                pre_kwargs[name] = value
+                args.remove(value)
+
+            # TODO if single arg try arg(*args, **kwargs)
+
+            args = [validate(route.varargs, v) for v in args]
+
+            kwargs = {
+                n: v if n in specials else validate(t, v)
+                for n, t, v in ((n, t, pre_kwargs.pop(n)) for n, t in route.args.items())
+            }
+
+            # TODO test varkw
+            kwargs.update({n: validate(route.varkw, v) for n, v in pre_kwargs.items()})
         except (TypeError, ValueError) as err:
             logger.debug("Invalid %r: %s", incoming, err)
             error = INVALID_PARAMS
