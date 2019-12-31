@@ -1,3 +1,5 @@
+from logging import DEBUG
+
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
@@ -145,7 +147,8 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'method': 'WsNotification', 'id': 18},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 18}
 )])
-async def test_post_request(test_cli, in_: dict, out: dict):
+async def test_post_request(caplog, test_cli, in_: dict, out: dict):
+    caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
     data = await response.json()
     assert data == out
@@ -206,10 +209,11 @@ async def test_post_request(test_cli, in_: dict, out: dict):
     {'jsonrpc': '2.0', 'method': 'WsNotification', 'id': 18},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 18}
 )])
-async def test_ws_request(test_cli, in_: dict, out: dict):
+async def test_ws_request(caplog, test_cli, in_: dict, out: dict):
+    caplog.set_level(DEBUG)
     ws = await test_cli.ws_connect('/ws')
     await ws.send_json(in_)
     data = await ws.receive_json(timeout=0.01)
-    assert data == out
+    await ws.close()
 
-# TODO test notification
+    assert data == out

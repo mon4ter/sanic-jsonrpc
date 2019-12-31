@@ -10,6 +10,8 @@ _Annotations = Dict[str, type]
 
 
 class _Route:
+    __slots__ = ('func', 'name', 'args', 'varargs', 'kwargs', 'varkw', 'result')
+
     @classmethod
     def from_inspect(cls, func: Callable, name: Optional[str], annotations: _Annotations) -> '_Route':
         name = name or func.__name__
@@ -21,13 +23,18 @@ class _Route:
             for arg_name in spec.args
         )
 
+        kwargs = OrderedDict(
+            (arg_name, annotations.get(arg_name, spec.annotations.get(arg_name, Any)))
+            for arg_name in spec.kwonlyargs
+        )
+
         varargs = annotations.get(spec.varargs, spec.annotations.get(spec.varargs, Any)) if spec.varargs else None
 
         varkw = annotations.get(spec.varkw, spec.annotations.get(spec.varkw, Any)) if spec.varkw else None
 
         result = annotations.get('result', spec.annotations.get('return'))
 
-        return cls(func, name, args, varargs, varkw, result)
+        return cls(func, name, args, varargs, kwargs, varkw, result)
 
     def __init__(
             self,
@@ -35,6 +42,7 @@ class _Route:
             name: str,
             args: _Annotations,
             varargs: Optional[type],
+            kwargs: _Annotations,
             varkw: Optional[type],
             result: Optional[type]
     ):
@@ -42,5 +50,6 @@ class _Route:
         self.name = name
         self.args = args
         self.varargs = varargs
+        self.kwargs = kwargs
         self.varkw = varkw
         self.result = result

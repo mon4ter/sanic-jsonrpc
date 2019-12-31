@@ -1,4 +1,5 @@
 from asyncio import sleep
+from logging import DEBUG
 
 from pytest import fixture, mark
 from sanic import Sanic
@@ -56,7 +57,8 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'method': 'raise_exception', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 5}
 )])
-async def test_call(test_cli, in_: dict, out: dict):
+async def test_call(caplog, test_cli, in_: dict, out: dict):
+    caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
     data = await response.json()
     assert data == out

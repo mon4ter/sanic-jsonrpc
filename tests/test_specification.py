@@ -1,5 +1,6 @@
 from asyncio import TimeoutError
 from functools import partial
+from logging import DEBUG
 from operator import contains
 from typing import List
 
@@ -111,7 +112,8 @@ def test_cli(loop, app, sanic_client):
     ']',
     ''
 )])
-async def test_post(test_cli, in_: str, out: str):
+async def test_post(caplog, test_cli, in_: str, out: str):
+    caplog.set_level(DEBUG)
     response = await test_cli.post('/post', data=in_)
 
     if response.headers['content-type'] == 'application/json':
@@ -202,7 +204,8 @@ async def test_post(test_cli, in_: str, out: str):
     ],
     []
 )])
-async def test_ws(test_cli, in_: List[str], out: List[str]):
+async def test_ws(caplog, test_cli, in_: List[str], out: List[str]):
+    caplog.set_level(DEBUG)
     ws = await test_cli.ws_connect('/ws')
 
     for data in in_:
@@ -214,8 +217,10 @@ async def test_ws(test_cli, in_: List[str], out: List[str]):
         try:
             left.append(loads(await ws.receive_str(timeout=0.01)))
         except TimeoutError:
-            await ws.close()
             break
 
+    await ws.close()
+
     right = [loads(s) for s in out]
+
     assert lists_equal_unordered(left, right)

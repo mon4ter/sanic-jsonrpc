@@ -1,7 +1,7 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, iscoroutine, shield, wait
 from functools import partial
 from logging import getLogger
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET, validate
 from sanic import Sanic
@@ -94,74 +94,118 @@ class Jsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    async def _call(
+    def _make_args(
             self,
             incoming: _Incoming,
             route: _Route,
             sanic_request: SanicRequest,
             ws: Optional[WebSocketCommonProtocol] = None
-    ) -> Optional[Response]:
-        logger.debug("--> %r", incoming)
+    ) -> Union[Tuple[list, dict], Error]:
+        params = incoming.params
+        list_params = None
+        dict_params = None
+
+        if isinstance(params, list):
+            list_params = params.copy()
+        elif isinstance(params, dict):
+            dict_params = params.copy()
+        else:
+            list_params = [params]
 
         args = []
-        pre_kwargs = {}
         kwargs = {}
 
-        for name, typ in route.args.items():
-            if typ is SanicRequest:
-                pre_kwargs[name] = sanic_request
-            elif typ is WebSocketCommonProtocol:
-                pre_kwargs[name] = ws
-            elif typ is Sanic:
-                pre_kwargs[name] = self.app
-            elif typ is Request or typ is Notification:
-                # TODO test notification
-                pre_kwargs[name] = incoming
-            elif typ is Notifier:
-                pre_kwargs[name] = self._notifier(ws) if ws else None
+        def args_setter(_nam, val):
+            args.append(val)
 
-        specials = set(pre_kwargs)
-
-        error = UNSET
-
-        if isinstance(incoming.params, dict):
-            if any(k in incoming.params for k in specials):
-                logger.debug("Invalid %r: params conflicts with special arguments", incoming)
-                error = INVALID_PARAMS
-
-            pre_kwargs.update(incoming.params)
-        elif isinstance(incoming.params, list):
-            args.extend(incoming.params)
-        elif incoming.params is not UNSET:
-            args.append(incoming.params)
+        def kwargs_setter(nam, val):
+            kwargs[nam] = val
 
         try:
-            # TODO test args after specials
-            for name, value in zip((n for n in route.args if n not in specials), args.copy()):
-                pre_kwargs[name] = value
-                args.remove(value)
+            for route_names_types, setter in [(route.args, args_setter), (route.kwargs, kwargs_setter)]:
+                for name, typ in route_names_types.items():
+                    if typ is SanicRequest:
+                        # TODO test SanicRequest in kwargs
+                        setter(name, sanic_request)
+                    elif typ is WebSocketCommonProtocol:
+                        # TODO test WebSocketCommonProtocol in kwargs
+                        setter(name, ws)
+                    elif typ is Sanic:
+                        setter(name, self.app)
+                    elif typ is Request or typ is Notification:
+                        # TODO test Notification args
+                        # TODO test Request in kwargs
+                        # TODO test Notification in kwargs
+                        setter(name, incoming)
+                    elif typ is Notifier:
+                        # TODO test Notifier in kwargs
+                        setter(name, self._notifier(ws) if ws else None)
+                    elif dict_params:
+                        # TODO test kwonlyargs in dict params
+                        setter(name, validate(typ, dict_params.pop(name)))
+                    else:
+                        # TODO test kwonlyargs in list params
+                        value = list_params.pop(0)
 
-            # TODO if single arg try arg(*args, **kwargs)
+                        if value is UNSET:
+                            raise IndexError
 
-            args = [validate(route.varargs, v) for v in args]
+                        setter(name, validate(typ, value))
 
-            kwargs = {
-                n: v if n in specials else validate(t, v)
-                for n, t, v in ((n, t, pre_kwargs.pop(n)) for n, t in route.args.items())
-            }
+            if dict_params and route.varkw:
+                typ = route.varkw
 
-            # TODO test varkw
-            kwargs.update({n: validate(route.varkw, v) for n, v in pre_kwargs.items()})
-        except (TypeError, ValueError) as err:
-            logger.debug("Invalid %r: %s", incoming, err)
-            error = INVALID_PARAMS
-        except KeyError as err:
-            logger.debug("Invalid %r: missing required argument %s", incoming, err)
-            error = INVALID_PARAMS
+                for name, value in dict_params.items():
+                    kwargs_setter(name, validate(typ, value))
+            elif route.varargs:
+                name = '*'
+                typ = route.varargs
 
+                for value in list_params:
+                    # TODO test varargs and no params
+                    if value is UNSET:
+                        raise IndexError
+
+                    args_setter(name, validate(typ, value))
+        except (TypeError, ValueError, LookupError) as err:
+            try:
+                if params is UNSET:
+                    raise TypeError
+
+                # TODO test recover to kwonlyarg
+                # FIXME recovery doesn't fail on multiple args and kwargs
+                # `setter`, `name` and `typ` MUST be defined here. Otherwise, let it fail.
+                # noinspection PyUnboundLocalVariable
+                setter(name, validate(typ, params))
+            except (TypeError, ValueError):
+                logger.debug(
+                    "Invalid %r: %s parameter %r",
+                    incoming, 'missing required' if isinstance(err, LookupError) else 'invalid', name
+                )
+                ret = INVALID_PARAMS
+            else:
+                # `name` MUST be defined here. Otherwise, let it fail.
+                # noinspection PyUnboundLocalVariable
+                logger.debug("Recovered from %r while processing %r's parameter %s", err, incoming, name)
+                ret = args, kwargs
+        else:
+            ret = args, kwargs
+
+        return ret
+
+    async def _call(self, incoming: _Incoming, route: _Route, *args, **kwargs) -> Optional[Response]:
+        logger.debug("--> %r", incoming)
+
+        error = UNSET
         result = UNSET
 
-        if error is UNSET:
+        validated_call = self._make_args(incoming, route, *args, **kwargs)
+
+        if isinstance(validated_call, Error):
+            error = validated_call
+        else:
+            args, kwargs = validated_call
+
             try:
                 ret = route.func(*args, **kwargs)
 
@@ -240,7 +284,20 @@ class Jsonrpc:
 
                 pending.add(recv)
 
-            done, pending = await wait(pending, return_when=FIRST_COMPLETED)
+            try:
+                done, pending = await wait(pending, return_when=FIRST_COMPLETED)
+            except CancelledError:
+                for fut in pending:
+                    if fut.done():
+                        err = fut.exception()
+
+                        if err:
+                            logger.error("%s", err, exc_info=err)
+                    else:
+                        # TODO test pending futures while closing WS
+                        fut.cancel()
+
+                break
 
             for fut in done:
                 err = fut.exception()
