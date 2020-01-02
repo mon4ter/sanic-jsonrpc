@@ -4,7 +4,8 @@ from typing import Tuple
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
-from sanic.websocket import WebSocketCommonProtocol, WebSocketProtocol
+from sanic.websocket import WebSocketProtocol
+from websockets import WebSocketCommonProtocol
 
 from sanic_jsonrpc import Jsonrpc, Notifier, Request
 
@@ -17,7 +18,7 @@ class Pair:
 
 @fixture
 def app():
-    app_ = Sanic()
+    app_ = Sanic('sanic-jsonrpc')
     jsonrpc = Jsonrpc(app_, '/post', '/ws')
 
     @jsonrpc
@@ -50,6 +51,7 @@ def app():
 
     @jsonrpc.ws
     def ws(ws_: WebSocketCommonProtocol) -> bool:
+        print(type(ws_))
         return isinstance(ws_, WebSocketCommonProtocol)
 
     @jsonrpc.post

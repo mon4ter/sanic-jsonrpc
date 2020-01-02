@@ -9,7 +9,7 @@ from sanic_jsonrpc import Jsonrpc
 
 @fixture
 def app():
-    app_ = Sanic()
+    app_ = Sanic('sanic-jsonrpc')
     jsonrpc = Jsonrpc(app_, '/post', '/ws')
 
     @jsonrpc

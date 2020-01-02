@@ -18,7 +18,7 @@ def lists_equal_unordered(self: list, other: list) -> bool:
 
 @fixture
 def app():
-    app_ = Sanic()
+    app_ = Sanic('sanic-jsonrpc')
     jsonrpc = Jsonrpc(app_, '/post', '/ws')
 
     @jsonrpc

@@ -7,8 +7,8 @@ from fashionable import ModelAttributeError, ModelError, UNSET, validate
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
-from sanic.websocket import WebSocketCommonProtocol
 from ujson import dumps, loads
+from websockets import WebSocketCommonProtocol
 
 from ._route import _Route
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR

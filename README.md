@@ -11,7 +11,7 @@ JSON-RPC 2.0 support for Sanic over HTTP and WebSocket
 from sanic import Sanic
 from sanic_jsonrpc import Jsonrpc
 
-app = Sanic()
+app = Sanic('server')
 jsonrpc = Jsonrpc(app, post_route='/api/rpc/post', ws_route='/api/rpc/ws')
 
 @jsonrpc

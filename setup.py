@@ -17,6 +17,7 @@ setup(
         'Sanic',
         'fashionable>=0.9.0',
         'ujson',
+        'websockets',
     ],
     setup_requires=['pytest-runner'],
     tests_require=[
