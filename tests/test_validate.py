@@ -21,6 +21,7 @@ def app():
     app_ = Sanic('sanic-jsonrpc')
     jsonrpc = Jsonrpc(app_, '/post', '/ws')
 
+    # TODO refactor test/method names
     @jsonrpc
     def add(*terms: int) -> int:
         return sum(terms)

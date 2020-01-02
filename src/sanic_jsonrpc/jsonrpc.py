@@ -10,7 +10,7 @@ from sanic.response import HTTPResponse
 from ujson import dumps, loads
 from websockets import WebSocketCommonProtocol
 
-from ._route import _Route
+from .route import Route, ArgError
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
 
@@ -79,7 +79,7 @@ class Jsonrpc:
 
         return self._serialize([dict(r) for r in responses])
 
-    def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[_Route, Response]]:
+    def _route(self, incoming: _Incoming, is_post: bool) -> Optional[Union[Route, Response]]:
         is_request = isinstance(incoming, Request)
         route = self._routes.get((is_post, is_request, incoming.method))
 
@@ -97,7 +97,7 @@ class Jsonrpc:
     def _make_args(
             self,
             incoming: _Incoming,
-            route: _Route,
+            route: Route,
             sanic_request: SanicRequest,
             ws: Optional[WebSocketCommonProtocol] = None
     ) -> Union[Tuple[list, dict], Error]:
@@ -114,86 +114,93 @@ class Jsonrpc:
 
         args = []
         kwargs = {}
+        recover_allowed = True
 
-        def args_setter(_nam, val):
-            args.append(val)
-
-        def kwargs_setter(nam, val):
-            kwargs[nam] = val
-
-        try:
-            for route_names_types, setter in [(route.args, args_setter), (route.kwargs, kwargs_setter)]:
-                for name, typ in route_names_types.items():
-                    if typ is SanicRequest:
-                        # TODO test SanicRequest in kwargs
-                        setter(name, sanic_request)
-                    elif typ is WebSocketCommonProtocol:
-                        # TODO test WebSocketCommonProtocol in kwargs
-                        setter(name, ws)
-                    elif typ is Sanic:
-                        setter(name, self.app)
-                    elif typ is Request or typ is Notification:
-                        # TODO test Notification args
-                        # TODO test Request in kwargs
-                        # TODO test Notification in kwargs
-                        setter(name, incoming)
-                    elif typ is Notifier:
-                        # TODO test Notifier in kwargs
-                        setter(name, self._notifier(ws) if ws else None)
-                    elif dict_params:
-                        # TODO test kwonlyargs in dict params
-                        setter(name, validate(typ, dict_params.pop(name)))
+        for arg in route.args:
+            if arg.is_zipped:
+                try:
+                    if dict_params:
+                        for param_name, param_value in dict_params.items():
+                            kwargs[param_name] = arg.validate(param_value)
+                            recover_allowed = False
                     else:
-                        # TODO test kwonlyargs in list params
-                        value = list_params.pop(0)
+                        for param_value in list_params:
+                            args.append(arg.validate(param_value))
+                            recover_allowed = False
+                except ArgError as err:
+                    # FIXME duplicate code
+                    logger.debug("Invalid %r: %s", incoming, err)
+                    ret = INVALID_PARAMS
+                    break
 
-                        if value is UNSET:
-                            raise IndexError
+                continue
 
-                        setter(name, validate(typ, value))
+            typ = arg.type
+            name = arg.name
 
-            if dict_params and route.varkw:
-                typ = route.varkw
+            if typ is SanicRequest:
+                # TODO test SanicRequest in kwargs
+                value = sanic_request
+            elif typ is WebSocketCommonProtocol:
+                # TODO test WebSocketCommonProtocol in kwargs
+                value = ws
+            elif typ is Sanic:
+                value = self.app
+            elif typ is Request or typ is Notification:
+                # TODO test Notification args
+                # TODO test Request in kwargs
+                # TODO test Notification in kwargs
+                value = incoming
+            elif typ is Notifier:
+                # TODO test Notifier in kwargs
+                value = self._notifier(ws) if ws else None
+            elif dict_params:
+                # TODO test default kwarg
+                try:
+                    value = arg.validate(dict_params.pop(name, UNSET))
+                except ArgError as err:
+                    if not recover_allowed:
+                        raise
 
-                for name, value in dict_params.items():
-                    kwargs_setter(name, validate(typ, value))
-            elif route.varargs:
-                name = '*'
-                typ = route.varargs
-
-                for value in list_params:
-                    # TODO test varargs and no params
-                    if value is UNSET:
-                        raise IndexError
-
-                    args_setter(name, validate(typ, value))
-        except (TypeError, ValueError, LookupError) as err:
-            try:
-                if params is UNSET:
-                    raise TypeError
-
-                # TODO test recover to kwonlyarg
-                # FIXME recovery doesn't fail on multiple args and kwargs
-                # `setter`, `name` and `typ` MUST be defined here. Otherwise, let it fail.
-                # noinspection PyUnboundLocalVariable
-                setter(name, validate(typ, params))
-            except (TypeError, ValueError):
-                logger.debug(
-                    "Invalid %r: %s parameter %r",
-                    incoming, 'missing required' if isinstance(err, LookupError) else 'invalid', name
-                )
-                ret = INVALID_PARAMS
+                    try:
+                        value = arg.validate(params)
+                    except ArgError:
+                        logger.debug("Invalid %r: %s", incoming, err)
+                        ret = INVALID_PARAMS
+                        break
+                    else:
+                        logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
             else:
-                # `name` MUST be defined here. Otherwise, let it fail.
-                # noinspection PyUnboundLocalVariable
-                logger.debug("Recovered from %r while processing %r's parameter %s", err, incoming, name)
-                ret = args, kwargs
+                # TODO test default arg
+                # FIXME duplicate code
+                try:
+                    value = arg.validate(list_params.pop(0) if list_params else UNSET)
+                except ArgError as err:
+                    try:
+                        if not recover_allowed:
+                            # TODO test recover only once
+                            raise
+
+                        value = arg.validate(params)
+                    except ArgError:
+                        logger.debug("Invalid %r: %s", incoming, err)
+                        ret = INVALID_PARAMS
+                        break
+                    else:
+                        logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
+
+            if arg.is_positional:
+                args.append(value)
+            else:
+                kwargs[name] = value
+
+            recover_allowed = False
         else:
             ret = args, kwargs
 
         return ret
 
-    async def _call(self, incoming: _Incoming, route: _Route, *args, **kwargs) -> Optional[Response]:
+    async def _call(self, incoming: _Incoming, route: Route, *args, **kwargs) -> Optional[Response]:
         logger.debug("--> %r", incoming)
 
         error = UNSET
@@ -251,7 +258,7 @@ class Jsonrpc:
 
             route = self._route(incoming, is_post=True)
 
-            if not isinstance(route, _Route):
+            if not isinstance(route, Route):
                 if route:
                     responses.append(route)
                 else:
@@ -330,7 +337,7 @@ class Jsonrpc:
 
                 route = self._route(incoming, is_post=False)
 
-                if not isinstance(route, _Route):
+                if not isinstance(route, Route):
                     if route:
                         pending.add(self._ws_outgoing(ws, route))
                     else:
@@ -398,7 +405,7 @@ class Jsonrpc:
             return self.__call__(is_post_=is_post_, is_request_=is_request_)(name_)
 
         def deco(func: Callable) -> Callable:
-            route = _Route.from_inspect(func, name_, annotations)
+            route = Route.from_inspect(func, name_, annotations)
 
             if is_post_ is None and is_request_ is None:
                 self._routes[True, True, route.name] = route
