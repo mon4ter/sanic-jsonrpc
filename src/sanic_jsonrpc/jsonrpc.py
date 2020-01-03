@@ -100,7 +100,7 @@ class Jsonrpc:
             route: Route,
             sanic_request: SanicRequest,
             ws: Optional[WebSocketCommonProtocol] = None
-    ) -> Union[Tuple[list, dict], Error]:
+    ) -> Tuple[list, dict]:
         params = incoming.params
         list_params = None
         dict_params = None
@@ -118,26 +118,21 @@ class Jsonrpc:
 
         for arg in route.args:
             if arg.is_zipped:
-                try:
-                    if dict_params:
-                        for param_name, param_value in dict_params.items():
-                            kwargs[param_name] = arg.validate(param_value)
-                            recover_allowed = False
-                    else:
-                        for param_value in list_params:
-                            args.append(arg.validate(param_value))
-                            recover_allowed = False
-                except ArgError as err:
-                    # FIXME duplicate code
-                    logger.debug("Invalid %r: %s", incoming, err)
-                    ret = INVALID_PARAMS
-                    break
+                if dict_params:
+                    for param_name, param_value in dict_params.items():
+                        kwargs[param_name] = arg.validate(param_value)
+                        recover_allowed = False
+                else:
+                    for param_value in list_params:
+                        args.append(arg.validate(param_value))
+                        recover_allowed = False
 
                 continue
 
             typ = arg.type
             name = arg.name
 
+            # TODO refactor to dict-like switch
             if typ is SanicRequest:
                 # TODO test SanicRequest in kwargs
                 value = sanic_request
@@ -154,40 +149,19 @@ class Jsonrpc:
             elif typ is Notifier:
                 # TODO test Notifier in kwargs
                 value = self._notifier(ws) if ws else None
-            elif dict_params:
+            else:
+                # TODO test default arg
                 # TODO test default kwarg
                 try:
-                    value = arg.validate(dict_params.pop(name, UNSET))
+                    value = arg.validate(
+                        dict_params.pop(name, UNSET) if dict_params else list_params.pop(0) if list_params else UNSET
+                    )
                 except ArgError as err:
                     if not recover_allowed:
                         raise
 
-                    try:
-                        value = arg.validate(params)
-                    except ArgError:
-                        logger.debug("Invalid %r: %s", incoming, err)
-                        ret = INVALID_PARAMS
-                        break
-                    else:
-                        logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
-            else:
-                # TODO test default arg
-                # FIXME duplicate code
-                try:
-                    value = arg.validate(list_params.pop(0) if list_params else UNSET)
-                except ArgError as err:
-                    try:
-                        if not recover_allowed:
-                            # TODO test recover only once
-                            raise
-
-                        value = arg.validate(params)
-                    except ArgError:
-                        logger.debug("Invalid %r: %s", incoming, err)
-                        ret = INVALID_PARAMS
-                        break
-                    else:
-                        logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
+                    value = arg.validate(params)
+                    logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
 
             if arg.is_positional:
                 args.append(value)
@@ -195,10 +169,8 @@ class Jsonrpc:
                 kwargs[name] = value
 
             recover_allowed = False
-        else:
-            ret = args, kwargs
 
-        return ret
+        return args, kwargs
 
     async def _call(self, incoming: _Incoming, route: Route, *args, **kwargs) -> Optional[Response]:
         logger.debug("--> %r", incoming)
@@ -206,13 +178,12 @@ class Jsonrpc:
         error = UNSET
         result = UNSET
 
-        validated_call = self._make_args(incoming, route, *args, **kwargs)
-
-        if isinstance(validated_call, Error):
-            error = validated_call
+        try:
+            args, kwargs = self._make_args(incoming, route, *args, **kwargs)
+        except ArgError as err:
+            logger.debug("Invalid %r: %s", incoming, err)
+            error = INVALID_PARAMS
         else:
-            args, kwargs = validated_call
-
             try:
                 ret = route.func(*args, **kwargs)
 
@@ -399,7 +370,7 @@ class Jsonrpc:
             *,
             is_post_: Optional[bool] = None,
             is_request_: Optional[bool] = None,
-            **annotations
+            **annotations: type
     ) -> Callable:
         if isinstance(name_, Callable):
             return self.__call__(is_post_=is_post_, is_request_=is_request_)(name_)
@@ -425,26 +396,26 @@ class Jsonrpc:
 
         return deco
 
-    def post(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def post(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=True, **annotations)
 
-    def ws(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def ws(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=False, **annotations)
 
-    def request(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_request_=True, **annotations)
 
-    def notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_request_=False, **annotations)
 
-    def post_request(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def post_request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=True, is_request_=True, **annotations)
 
-    def ws_request(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def ws_request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=False, is_request_=True, **annotations)
 
-    def post_notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def post_notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=True, is_request_=False, **annotations)
 
-    def ws_notification(self, name_: Optional[str] = None, **annotations) -> Callable:
+    def ws_notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
         return self.__call__(name_, is_post_=False, is_request_=False, **annotations)
