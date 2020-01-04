@@ -30,6 +30,7 @@ Notifier = Callable[[Notification], None]
 
 
 # TODO middleware
+# TODO decompose to multiple classes
 class Jsonrpc:
     @staticmethod
     def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
@@ -129,29 +130,26 @@ class Jsonrpc:
 
                 continue
 
-            typ = arg.type
+            value = {
+                SanicRequest: sanic_request,
+                WebSocketCommonProtocol: ws,
+                Sanic: self.app,
+                Request: incoming,
+                Notification: incoming,
+                Notifier: self._notifier(ws) if ws else None,
+            }.get(arg.type, UNSET)
+
+            # TODO test SanicRequest in kwargs
+            # TODO test WebSocketCommonProtocol in kwargs
+            # TODO test Notification args
+            # TODO test Request in kwargs
+            # TODO test Notification in kwargs
+            # TODO test Notifier in kwargs
+            # TODO test default arg
+            # TODO test default kwarg
             name = arg.name
 
-            # TODO refactor to dict-like switch
-            if typ is SanicRequest:
-                # TODO test SanicRequest in kwargs
-                value = sanic_request
-            elif typ is WebSocketCommonProtocol:
-                # TODO test WebSocketCommonProtocol in kwargs
-                value = ws
-            elif typ is Sanic:
-                value = self.app
-            elif typ is Request or typ is Notification:
-                # TODO test Notification args
-                # TODO test Request in kwargs
-                # TODO test Notification in kwargs
-                value = incoming
-            elif typ is Notifier:
-                # TODO test Notifier in kwargs
-                value = self._notifier(ws) if ws else None
-            else:
-                # TODO test default arg
-                # TODO test default kwarg
+            if value is UNSET:
                 try:
                     value = arg.validate(
                         dict_params.pop(name, UNSET) if dict_params else list_params.pop(0) if list_params else UNSET
@@ -252,6 +250,24 @@ class Jsonrpc:
     def _ws_outgoing(self, ws: WebSocketCommonProtocol, outgoing: _Outgoing) -> Future:
         return ensure_future(ws.send(self._serialize(dict(outgoing))))
 
+    @staticmethod
+    def _finalise_future(fut: Future) -> Optional[Union[Response, str]]:
+        if fut.done():
+            err = fut.exception()
+
+            if err:
+                logger.error("%s", err, exc_info=err)
+            else:
+                return fut.result()
+        else:
+            fut.cancel()
+
+    def _notifier_done_callback(self, fut: Future):
+        self._finalise_future(fut)
+
+        if fut in self._notifications:
+            self._notifications.remove(fut)
+
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocketCommonProtocol):
         recv = None
         pending = set()
@@ -265,27 +281,15 @@ class Jsonrpc:
             try:
                 done, pending = await wait(pending, return_when=FIRST_COMPLETED)
             except CancelledError:
+                # TODO test pending futures while closing WS
                 for fut in pending:
-                    if fut.done():
-                        err = fut.exception()
-
-                        if err:
-                            logger.error("%s", err, exc_info=err)
-                    else:
-                        # TODO test pending futures while closing WS
-                        fut.cancel()
+                    self._finalise_future(fut)
 
                 break
 
             for fut in done:
-                err = fut.exception()
-
-                if err:
-                    # TODO test exception in call
-                    logger.error("%s", err, exc_info=err)
-                    continue
-
-                result = fut.result()
+                # TODO test exception in call
+                result = self._finalise_future(fut)
 
                 if not result:
                     continue
@@ -335,11 +339,16 @@ class Jsonrpc:
                 # TODO test stop Sanic while call is processing
                 await calls.get_nowait()
 
+            for fut in self._notifications:
+                self._finalise_future(fut)
+
     def _notifier(self, ws) -> Notifier:
         def notifier(notification: Notification):
             # TODO test outgoing notifications
-            # TODO save futures
-            self._ws_outgoing(ws, notification)
+            fut = self._ws_outgoing(ws, notification)
+            fut.add_done_callback(self._notifier_done_callback)
+            # TODO test no leak
+            self._notifications.add(fut)
         return notifier
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
@@ -354,6 +363,7 @@ class Jsonrpc:
         self._routes = {}
         self._calls = Queue()
         self._processing_task = None
+        self._notifications = set()
 
         @app.listener('after_server_start')
         async def start_processing(_app, _loop):
