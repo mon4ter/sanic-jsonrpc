@@ -205,7 +205,7 @@ class Jsonrpc:
                     result = ret
 
         if isinstance(incoming, Request):
-            response = Response('2.0', result=result, error=error, id=incoming.id)
+            response = _response(result=result, error=error, id=incoming.id)
             logger.debug("<-- %r", response)
             return response
 
