@@ -139,12 +139,6 @@ class Jsonrpc:
                 Notifier: self._notifier(ws) if ws else None,
             }.get(arg.type, UNSET)
 
-            # TODO test SanicRequest in kwargs
-            # TODO test WebSocketCommonProtocol in kwargs
-            # TODO test Notification args
-            # TODO test Request in kwargs
-            # TODO test Notification in kwargs
-            # TODO test Notifier in kwargs
             # TODO test default arg
             # TODO test default kwarg
             name = arg.name

@@ -7,7 +7,7 @@ from sanic.request import Request as SanicRequest
 from sanic.websocket import WebSocketProtocol
 from websockets import WebSocketCommonProtocol
 
-from sanic_jsonrpc import Jsonrpc, Notifier, Request
+from sanic_jsonrpc import Jsonrpc, Notifier, Request, Notification
 
 
 class Pair:
@@ -21,13 +21,12 @@ def app():
     app_ = Sanic('sanic-jsonrpc')
     jsonrpc = Jsonrpc(app_, '/post', '/ws')
 
-    # TODO refactor test/method names
     @jsonrpc
-    def add(*terms: int) -> int:
+    def vararg(*terms: int) -> int:
         return sum(terms)
 
     @jsonrpc(result=Pair)
-    def to_pair(number: int) -> Tuple[int, int]:
+    def result(number: int) -> Tuple[int, int]:
         return number // 10, number % 10
 
     @jsonrpc(result=int)
@@ -35,34 +34,70 @@ def app():
         return 's{}'.format(s)
 
     @jsonrpc
-    def sanic_request(req: SanicRequest) -> bool:
+    def sanic_request_positional(req: SanicRequest) -> bool:
         return isinstance(req, SanicRequest)
 
-    @jsonrpc.request
-    def request(req: Request) -> bool:
+    @jsonrpc
+    def sanic_request_keyword(*, req: SanicRequest) -> bool:
+        return isinstance(req, SanicRequest)
+
+    @jsonrpc
+    def request_positional(req: Request) -> bool:
         return isinstance(req, Request)
 
     @jsonrpc
-    def app(app__: Sanic) -> bool:
+    def request_keyword(*, req: Request) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def notification_positional(req: Notification) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def notification_keyword(*, req: Notification) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def app_positional(app__: Sanic) -> bool:
+        return app__ is app_
+
+    @jsonrpc
+    def app_keyword(*, app__: Sanic) -> bool:
         return app__ is app_
 
     @jsonrpc.post
-    def ws(ws_: WebSocketCommonProtocol) -> bool:
+    def ws_positional(ws_: WebSocketCommonProtocol) -> bool:
         return ws_ is None
 
     @jsonrpc.ws
-    def ws(ws_: WebSocketCommonProtocol) -> bool:
-        print(type(ws_))
+    def ws_positional(ws_: WebSocketCommonProtocol) -> bool:
         return isinstance(ws_, WebSocketCommonProtocol)
 
     @jsonrpc.post
-    def notifier(n: Notifier) -> bool:
+    def ws_keyword(*, ws_: WebSocketCommonProtocol) -> bool:
+        return ws_ is None
+
+    @jsonrpc.ws
+    def ws_keyword(*, ws_: WebSocketCommonProtocol) -> bool:
+        return isinstance(ws_, WebSocketCommonProtocol)
+
+    @jsonrpc.post
+    def notifier_positional(n: Notifier) -> bool:
         return n is None
 
     @jsonrpc.ws
-    def notifier(n: Notifier) -> bool:
+    def notifier_positional(n: Notifier) -> bool:
         return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
 
+    @jsonrpc.post
+    def notifier_keyword(*, n: Notifier) -> bool:
+        return n is None
+
+    @jsonrpc.ws
+    def notifier_keyword(*, n: Notifier) -> bool:
+        return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
+
+    # TODO refactor test/method names
     @jsonrpc
     def multi_word(word: str, multi: int) -> str:
         return word * multi
@@ -106,40 +141,61 @@ def test_cli(loop, app, sanic_client):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'add', 'params': [1, 2, 3], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': [1, 2, 3], 'id': 1},
     {'jsonrpc': '2.0', 'result': 6, 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'add', 'params': [3.0, 4.0, 5.0], 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': [3.0, 4.0, 5.0], 'id': 2},
     {'jsonrpc': '2.0', 'result': 12, 'id': 2}
 ), (
-    {'jsonrpc': '2.0', 'method': 'add', 'params': [3.1, 4.1, 5.1], 'id': 3},
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': [3.1, 4.1, 5.1], 'id': 3},
     {'jsonrpc': '2.0', 'result': 12, 'id': 3}
 ), (
-    {'jsonrpc': '2.0', 'method': 'to_pair', 'params': [35], 'id': 4},
+    {'jsonrpc': '2.0', 'method': 'result', 'params': [35], 'id': 4},
     {'jsonrpc': '2.0', 'result': {'first': 3, 'second': 5}, 'id': 4}
 ), (
-    {'jsonrpc': '2.0', 'method': 'invalid_response', 'params': [12], 'id': 5},
-    {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 5}
-), (
-    {'jsonrpc': '2.0', 'method': 'sanic_request', 'id': 6},
-    {'jsonrpc': '2.0', 'result': True, 'id': 6}
-), (
-    {'jsonrpc': '2.0', 'method': 'request', 'id': 7},
-    {'jsonrpc': '2.0', 'result': True, 'id': 7}
-), (
-    {'jsonrpc': '2.0', 'method': 'ws', 'id': 8},
-    {'jsonrpc': '2.0', 'result': True, 'id': 8}
-), (
-    {'jsonrpc': '2.0', 'method': 'notifier', 'id': 9},
-    {'jsonrpc': '2.0', 'result': True, 'id': 9}
-), (
-    {'jsonrpc': '2.0', 'method': 'app', 'id': 10},
-    {'jsonrpc': '2.0', 'result': True, 'id': 10}
-), (
-    {'jsonrpc': '2.1', 'method': 'app', 'id': 11},
+    {'jsonrpc': '2.1', 'method': 'invalid_request', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32600, 'message': "Invalid Request"}, 'id': None}
 ), (
-    {'jsonrpc': '2.0', 'method': 'add', 'params': ['1', '2', '3'], 'id': 12},
+    {'jsonrpc': '2.0', 'method': 'invalid_response', 'params': [12], 'id': 6},
+    {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 6}
+), (
+    {'jsonrpc': '2.0', 'method': 'sanic_request_positional', 'id': 7},
+    {'jsonrpc': '2.0', 'result': True, 'id': 7}
+), (
+    {'jsonrpc': '2.0', 'method': 'sanic_request_keyword', 'id': 8},
+    {'jsonrpc': '2.0', 'result': True, 'id': 8}
+), (
+    {'jsonrpc': '2.0', 'method': 'request_positional', 'id': 9},
+    {'jsonrpc': '2.0', 'result': True, 'id': 9}
+), (
+    {'jsonrpc': '2.0', 'method': 'request_keyword', 'id': 10},
+    {'jsonrpc': '2.0', 'result': True, 'id': 10}
+), (
+    {'jsonrpc': '2.0', 'method': 'notification_positional', 'id': 11},
+    {'jsonrpc': '2.0', 'result': True, 'id': 11}
+), (
+    {'jsonrpc': '2.0', 'method': 'notification_keyword', 'id': 12},
+    {'jsonrpc': '2.0', 'result': True, 'id': 12}
+), (
+    {'jsonrpc': '2.0', 'method': 'app_positional', 'id': 13},
+    {'jsonrpc': '2.0', 'result': True, 'id': 13}
+), (
+    {'jsonrpc': '2.0', 'method': 'app_keyword', 'id': 14},
+    {'jsonrpc': '2.0', 'result': True, 'id': 14}
+), (
+    {'jsonrpc': '2.0', 'method': 'ws_positional', 'id': 15},
+    {'jsonrpc': '2.0', 'result': True, 'id': 15}
+), (
+    {'jsonrpc': '2.0', 'method': 'ws_keyword', 'id': 16},
+    {'jsonrpc': '2.0', 'result': True, 'id': 16}
+), (
+    {'jsonrpc': '2.0', 'method': 'notifier_positional', 'id': 17},
+    {'jsonrpc': '2.0', 'result': True, 'id': 17}
+), (
+    {'jsonrpc': '2.0', 'method': 'notifier_keyword', 'id': 18},
+    {'jsonrpc': '2.0', 'result': True, 'id': 18}
+), (
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', '3'], 'id': 12},
     {'jsonrpc': '2.0', 'result': 6, 'id': 12}
 ), (
     {'jsonrpc': '2.0', 'method': 'multi_word', 'params': ['a', '3'], 'id': 13},
@@ -148,13 +204,13 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'method': 'multi_word', 'params': [5, 5], 'id': 15},
     {'jsonrpc': '2.0', 'result': '55555', 'id': 15}
 ), (
-    {'jsonrpc': '2.0', 'method': 'add', 'params': ['1', '2', 'three'], 'id': 16},
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', 'three'], 'id': 16},
     {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 16}
 ), (
-    {'jsonrpc': '2.0', 'method': 'to_pair', 'params': ['one'], 'id': 17},
+    {'jsonrpc': '2.0', 'method': 'result', 'params': ['one'], 'id': 17},
     {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 17}
 ), (
-    {'jsonrpc': '2.0', 'method': 'to_pair', 'params': [1, 2], 'id': 18},
+    {'jsonrpc': '2.0', 'method': 'result', 'params': [1, 2], 'id': 18},
     {'jsonrpc': '2.0', 'result': {'first': 0, 'second': 1}, 'id': 18}
 ), (
     {'jsonrpc': '2.0', 'method': 'sum_two_pairs', 'params': [[1, 2], [10, 20]], 'id': 19},
@@ -206,11 +262,17 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'ws', 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'ws_positional', 'id': 1},
     {'jsonrpc': '2.0', 'result': True, 'id': 1}
 ), (
-    {'jsonrpc': '2.0', 'method': 'notifier', 'id': 2},
+    {'jsonrpc': '2.0', 'method': 'ws_keyword', 'id': 2},
     {'jsonrpc': '2.0', 'result': True, 'id': 2}
+), (
+    {'jsonrpc': '2.0', 'method': 'notifier_positional', 'id': 3},
+    {'jsonrpc': '2.0', 'result': True, 'id': 3}
+), (
+    {'jsonrpc': '2.0', 'method': 'notifier_keyword', 'id': 4},
+    {'jsonrpc': '2.0', 'result': True, 'id': 4}
 )])
 async def test_ws(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
