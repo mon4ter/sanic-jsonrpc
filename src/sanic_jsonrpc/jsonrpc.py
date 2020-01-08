@@ -1,18 +1,18 @@
-from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, iscoroutine, shield, wait
+from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, shield, wait
 from functools import partial
 from logging import getLogger
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
 
-from fashionable import ModelAttributeError, ModelError, UNSET, validate
+from fashionable import ModelAttributeError, ModelError, UNSET
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
 from ujson import dumps, loads
 from websockets import WebSocketCommonProtocol
 
-from .routing import Route, ArgError
 from .errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from .models import Error, Notification, Request, Response
+from .routing import Route, ArgError, ResultError
 
 __all__ = [
     'logger',
@@ -26,11 +26,10 @@ _JsonrpcType = Union[_Incoming, _Outgoing]
 _response = partial(Response, '2.0')
 
 logger = getLogger(__name__)
-Notifier = Callable[[Notification], None]
+Notifier = Callable[[Notification], Future]
 
 
 # TODO middleware
-# TODO decompose to multiple classes
 class Jsonrpc:
     @staticmethod
     def _parse_json(json: AnyStr) -> Union[Dict, List[Dict], Response]:
@@ -95,109 +94,45 @@ class Jsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    def _make_args(
+    async def _call(
             self,
             incoming: _Incoming,
             route: Route,
             sanic_request: SanicRequest,
             ws: Optional[WebSocketCommonProtocol] = None
-    ) -> Tuple[list, dict]:
-        params = incoming.params
-        list_params = None
-        dict_params = None
-
-        if isinstance(params, list):
-            list_params = params.copy()
-        elif isinstance(params, dict):
-            dict_params = params.copy()
-        else:
-            list_params = [params]
-
-        args = []
-        kwargs = {}
-        recover_allowed = True
-
-        for arg in route.args:
-            if arg.is_zipped:
-                if dict_params:
-                    for param_name, param_value in dict_params.items():
-                        kwargs[param_name] = arg.validate(param_value)
-                        recover_allowed = False
-                else:
-                    for param_value in list_params:
-                        args.append(arg.validate(param_value))
-                        recover_allowed = False
-
-                continue
-
-            value = {
-                SanicRequest: sanic_request,
-                WebSocketCommonProtocol: ws,
-                Sanic: self.app,
-                Request: incoming,
-                Notification: incoming,
-                Notifier: self._notifier(ws) if ws else None,
-            }.get(arg.type, UNSET)
-
-            # TODO test default arg
-            # TODO test default kwarg
-            name = arg.name
-
-            if value is UNSET:
-                try:
-                    value = arg.validate(
-                        dict_params.pop(name, UNSET) if dict_params else list_params.pop(0) if list_params else UNSET
-                    )
-                except ArgError as err:
-                    if not recover_allowed:
-                        # TODO test recover once
-                        raise
-
-                    value = arg.validate(params)
-                    logger.debug("Recovered from %r while processing %r's param %s", err, incoming, name)
-
-            if arg.is_positional:
-                args.append(value)
-            else:
-                kwargs[name] = value
-
-            recover_allowed = False
-
-        return args, kwargs
-
-    async def _call(self, incoming: _Incoming, route: Route, *args, **kwargs) -> Optional[Response]:
+    ) -> Optional[Response]:
         logger.debug("--> %r", incoming)
 
         error = UNSET
         result = UNSET
 
+        customs = {
+            SanicRequest: sanic_request,
+            WebSocketCommonProtocol: ws,
+            Sanic: self.app,
+            Request: incoming,
+            Notification: incoming,
+            Notifier: self._notifier(ws) if ws else None,
+        }
+
         try:
-            args, kwargs = self._make_args(incoming, route, *args, **kwargs)
+            ret = await route.call(incoming.params, customs)
+        except ResultError as err:
+            logger.error("%r failed: %s", incoming, err, exc_info=err)
+            error = INTERNAL_ERROR
         except ArgError as err:
             logger.debug("Invalid %r: %s", incoming, err)
             error = INVALID_PARAMS
+        except Error as err:
+            error = err
+        except Exception as err:
+            logger.error("%r failed: %s", incoming, err, exc_info=err)
+            error = INTERNAL_ERROR
         else:
-            try:
-                ret = route.func(*args, **kwargs)
-
-                if iscoroutine(ret):
-                    ret = await ret
-            except Error as err:
-                error = err
-            except Exception as err:
-                logger.error("%r failed: %s", incoming, err, exc_info=err)
-                error = INTERNAL_ERROR
+            if isinstance(ret, Error):
+                error = ret
             else:
-                if isinstance(ret, Error):
-                    error = ret
-                elif route.result:
-                    try:
-                        result = validate(route.result, ret)
-                    except (TypeError, ValueError) as err:
-                        logger.error("Invalid response to %r: %s", incoming, err, exc_info=err)
-                        error = INTERNAL_ERROR
-                else:
-                    result = ret
+                result = ret
 
         if isinstance(incoming, Request):
             response = _response(result=result, error=error, id=incoming.id)
@@ -337,12 +272,17 @@ class Jsonrpc:
                 self._finalise_future(fut)
 
     def _notifier(self, ws) -> Notifier:
-        def notifier(notification: Notification):
+        def notifier(notification: Notification) -> Future:
+            if not isinstance(notification, Notification):
+                # TODO test invalid usage
+                raise TypeError("Notifier's arg must be a Notification, not {!r}", notification.__class__.__name__)
+
             # TODO test outgoing notifications
             fut = self._ws_outgoing(ws, notification)
             fut.add_done_callback(self._notifier_done_callback)
             # TODO test no leak
             self._notifications.add(fut)
+            return fut
         return notifier
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
@@ -397,7 +337,6 @@ class Jsonrpc:
                 self._routes[is_post_, is_request_, route.name] = route
 
             return func
-
         return deco
 
     def post(self, name_: Optional[str] = None, **annotations: type) -> Callable:
