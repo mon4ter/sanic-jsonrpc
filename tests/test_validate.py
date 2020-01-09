@@ -97,21 +97,20 @@ def app():
     def notifier_keyword(*, n: Notifier) -> bool:
         return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
 
-    # TODO refactor test/method names
     @jsonrpc
-    def multi_word(word: str, multi: int) -> str:
+    def params_types(word: str, multi: int) -> str:
         return word * multi
 
     @jsonrpc
-    def sum_two_pairs(p1: Pair, p2: Pair) -> Pair:
+    def class_args(p1: Pair, p2: Pair) -> Pair:
         return Pair(p1.first + p2.first, p1.second + p2.second)
 
     @jsonrpc
-    def sum_pairs(*pairs: Pair) -> Pair:
+    def class_vararg(*pairs: Pair) -> Pair:
         return Pair(sum(p.first for p in pairs), sum(p.second for p in pairs))
 
     @jsonrpc
-    def fancy_string(**kwargs: str) -> str:
+    def varkw(**kwargs: str) -> str:
         return ';'.join('{}={}'.format(k, kwargs[k]) for k in sorted(kwargs))
 
     @jsonrpc
@@ -195,65 +194,65 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'method': 'notifier_keyword', 'id': 18},
     {'jsonrpc': '2.0', 'result': True, 'id': 18}
 ), (
-    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', '3'], 'id': 12},
-    {'jsonrpc': '2.0', 'result': 6, 'id': 12}
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', '3'], 'id': 19},
+    {'jsonrpc': '2.0', 'result': 6, 'id': 19}
 ), (
-    {'jsonrpc': '2.0', 'method': 'multi_word', 'params': ['a', '3'], 'id': 13},
-    {'jsonrpc': '2.0', 'result': 'aaa', 'id': 13}
+    {'jsonrpc': '2.0', 'method': 'params_types', 'params': ['a', '3'], 'id': 20},
+    {'jsonrpc': '2.0', 'result': 'aaa', 'id': 20}
 ), (
-    {'jsonrpc': '2.0', 'method': 'multi_word', 'params': [5, 5], 'id': 15},
-    {'jsonrpc': '2.0', 'result': '55555', 'id': 15}
+    {'jsonrpc': '2.0', 'method': 'params_types', 'params': [5, 5], 'id': 20},
+    {'jsonrpc': '2.0', 'result': '55555', 'id': 20}
 ), (
-    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', 'three'], 'id': 16},
-    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 16}
+    {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', 'three'], 'id': 21},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 21}
 ), (
-    {'jsonrpc': '2.0', 'method': 'result', 'params': ['one'], 'id': 17},
-    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 17}
+    {'jsonrpc': '2.0', 'method': 'result', 'params': ['one'], 'id': 22},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 22}
 ), (
-    {'jsonrpc': '2.0', 'method': 'result', 'params': [1, 2], 'id': 18},
-    {'jsonrpc': '2.0', 'result': {'first': 0, 'second': 1}, 'id': 18}
+    {'jsonrpc': '2.0', 'method': 'result', 'params': [1, 2], 'id': 23},
+    {'jsonrpc': '2.0', 'result': {'first': 0, 'second': 1}, 'id': 23}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_two_pairs', 'params': [[1, 2], [10, 20]], 'id': 19},
-    {'jsonrpc': '2.0', 'result': {'first': 11, 'second': 22}, 'id': 19}
+    {'jsonrpc': '2.0', 'method': 'class_args', 'params': [[1, 2], [10, 20]], 'id': 24},
+    {'jsonrpc': '2.0', 'result': {'first': 11, 'second': 22}, 'id': 24}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_two_pairs', 'params': [
+    {'jsonrpc': '2.0', 'method': 'class_args', 'params': [
         {'first': 3, 'second': 4}, {'first': 30, 'second': 40}
-    ], 'id': 20},
-    {'jsonrpc': '2.0', 'result': {'first': 33, 'second': 44}, 'id': 20}
+    ], 'id': 25},
+    {'jsonrpc': '2.0', 'result': {'first': 33, 'second': 44}, 'id': 25}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_pairs', 'params': [[1, 2], [10, 20]], 'id': 21},
-    {'jsonrpc': '2.0', 'result': {'first': 11, 'second': 22}, 'id': 21}
+    {'jsonrpc': '2.0', 'method': 'class_vararg', 'params': [[1, 2], [10, 20]], 'id': 26},
+    {'jsonrpc': '2.0', 'result': {'first': 11, 'second': 22}, 'id': 26}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_pairs', 'params': [
+    {'jsonrpc': '2.0', 'method': 'class_vararg', 'params': [
         {'first': 3, 'second': 4}, {'first': 30, 'second': 40}
-    ], 'id': 22},
-    {'jsonrpc': '2.0', 'result': {'first': 33, 'second': 44}, 'id': 22}
+    ], 'id': 27},
+    {'jsonrpc': '2.0', 'result': {'first': 33, 'second': 44}, 'id': 27}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_pairs', 'params': [[6, 7]], 'id': 23},
-    {'jsonrpc': '2.0', 'result': {'first': 6, 'second': 7}, 'id': 23}
+    {'jsonrpc': '2.0', 'method': 'class_vararg', 'params': [[6, 7]], 'id': 28},
+    {'jsonrpc': '2.0', 'result': {'first': 6, 'second': 7}, 'id': 28}
 ), (
-    {'jsonrpc': '2.0', 'method': 'sum_pairs', 'params': [], 'id': 24},
-    {'jsonrpc': '2.0', 'result': {'first': 0, 'second': 0}, 'id': 24}
+    {'jsonrpc': '2.0', 'method': 'class_vararg', 'params': [], 'id': 29},
+    {'jsonrpc': '2.0', 'result': {'first': 0, 'second': 0}, 'id': 29}
 ), (
-    {'jsonrpc': '2.0', 'method': 'fancy_string', 'params': {'foo': 123, 'bar': 456}, 'id': 24},
-    {'jsonrpc': '2.0', 'result': 'bar=456;foo=123', 'id': 24}
+    {'jsonrpc': '2.0', 'method': 'varkw', 'params': {'foo': 123, 'bar': 456}, 'id': 30},
+    {'jsonrpc': '2.0', 'result': 'bar=456;foo=123', 'id': 30}
 ), (
-    {'jsonrpc': '2.0', 'method': 'arg_request', 'params': '700', 'id': 25},
-    {'jsonrpc': '2.0', 'result': 725, 'id': 25}
+    {'jsonrpc': '2.0', 'method': 'arg_request', 'params': '700', 'id': 31},
+    {'jsonrpc': '2.0', 'result': 731, 'id': 31}
 ), (
-    {'jsonrpc': '2.0', 'method': 'args_varargs_special', 'params': [0, 1, 10, 20], 'id': 25},
-    {'jsonrpc': '2.0', 'result': True, 'id': 25}
+    {'jsonrpc': '2.0', 'method': 'args_varargs_special', 'params': [0, 1, 10, 20], 'id': 32},
+    {'jsonrpc': '2.0', 'result': True, 'id': 32}
 ), (
     {'jsonrpc': '2.0', 'method': 'args_varargs_special', 'params': {
         'first': 0, 'a': 123, 'b': 456, 'c': 789
-    }, 'id': 26},
-    {'jsonrpc': '2.0', 'result': True, 'id': 26}
+    }, 'id': 33},
+    {'jsonrpc': '2.0', 'result': True, 'id': 33}
 ), (
-    {'jsonrpc': '2.0', 'method': 'recover', 'params': [7, 4], 'id': 27},
-    {'jsonrpc': '2.0', 'result': 11, 'id': 27}
+    {'jsonrpc': '2.0', 'method': 'recover', 'params': [7, 4], 'id': 34},
+    {'jsonrpc': '2.0', 'result': 11, 'id': 34}
 ), (
-    {'jsonrpc': '2.0', 'method': 'recover', 'params': {'first': 8, 'second': 9}, 'id': 28},
-    {'jsonrpc': '2.0', 'result': 17, 'id': 28}
+    {'jsonrpc': '2.0', 'method': 'recover', 'params': {'first': 8, 'second': 9}, 'id': 35},
+    {'jsonrpc': '2.0', 'result': 17, 'id': 35}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
