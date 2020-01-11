@@ -131,6 +131,14 @@ def app():
     def recover(pair: Pair) -> int:
         return pair.first + pair.second
 
+    @jsonrpc
+    def default_arg(a: str, b: str = '-') -> str:
+        return a + b
+
+    @jsonrpc
+    def default_kwarg(*, a: str, b: str = '-') -> str:
+        return a + b
+
     return app_
 
 
@@ -253,6 +261,18 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'recover', 'params': {'first': 8, 'second': 9}, 'id': 35},
     {'jsonrpc': '2.0', 'result': 17, 'id': 35}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_arg', 'params': [123, 456], 'id': 36},
+    {'jsonrpc': '2.0', 'result': '123456', 'id': 36}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_arg', 'params': [123], 'id': 37},
+    {'jsonrpc': '2.0', 'result': '123-', 'id': 37}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_kwarg', 'params': {'a': 123, 'b': 456}, 'id': 38},
+    {'jsonrpc': '2.0', 'result': '123456', 'id': 38}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_kwarg', 'params': {'a': 123}, 'id': 39},
+    {'jsonrpc': '2.0', 'result': '123-', 'id': 39}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)

@@ -1,7 +1,7 @@
 from asyncio import iscoroutine
 from inspect import getfullargspec
-from itertools import zip_longest
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from itertools import chain, zip_longest
+from typing import Any, Callable, Dict, Optional, Tuple, Union, Iterable
 
 from fashionable import UNSET
 
@@ -13,23 +13,28 @@ __all__ = [
 ]
 
 
+def _zip_right(*iterables, fillvalue=None) -> Iterable:
+    return reversed(tuple(zip_longest(*map(reversed, iterables), fillvalue=fillvalue)))
+
+
 class Route:
     __slots__ = ('func', 'name', 'args', 'result')
 
     @classmethod
     def from_inspect(cls, func: Callable, name: Optional[str], annotations: Dict[str, type]) -> 'Route':
         spec = getfullargspec(func)
+        defaults = spec.defaults or ()
+        kwonlydefaults = spec.kwonlydefaults or {}
 
         def typ(nam: str) -> type:
             return annotations.get(nam, spec.annotations.get(nam, Any))
 
         args = [
-            Arg(n, typ(n), d, is_positional, is_zipped=False)
-            for names, defaults, is_positional in (
-                (spec.args or (), spec.defaults or (), True),
-                (spec.kwonlyargs or (), spec.kwonlydefaults or (), False),
+            Arg(name, typ(name), default, is_positional, is_zipped=False)
+            for name, default, is_positional in chain(
+                ((n, d, True) for n, d in _zip_right(spec.args, defaults, fillvalue=UNSET)),
+                ((n, d, False) for n, d in ((a, kwonlydefaults.get(a, UNSET)) for a in spec.kwonlyargs)),
             )
-            for n, d in reversed(tuple(zip_longest(reversed(names), reversed(defaults), fillvalue=UNSET)))
         ]
 
         if spec.varargs:
@@ -82,8 +87,6 @@ class Route:
 
             value = customs.get(arg.type, UNSET)
 
-            # TODO test default arg
-            # TODO test default kwarg
             name = arg.name
 
             if value is UNSET:
