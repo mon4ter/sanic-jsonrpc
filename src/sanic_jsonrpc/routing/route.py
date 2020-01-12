@@ -1,7 +1,7 @@
 from asyncio import iscoroutine
 from inspect import getfullargspec
 from itertools import chain, zip_longest
-from typing import Any, Callable, Dict, Optional, Tuple, Union, Iterable
+from typing import Any, Callable, Dict, Optional, Tuple, Iterable
 
 from fashionable import UNSET
 
@@ -23,30 +23,22 @@ class Route:
     @classmethod
     def from_inspect(cls, func: Callable, name: Optional[str], annotations: Dict[str, type]) -> 'Route':
         spec = getfullargspec(func)
-        defaults = spec.defaults or ()
         kwonlydefaults = spec.kwonlydefaults or {}
 
-        def typ(nam: str) -> type:
-            return annotations.get(nam, spec.annotations.get(nam, Any))
-
-        args = [
-            Arg(name, typ(name), default, is_positional, is_zipped=False)
-            for name, default, is_positional in chain(
-                ((n, d, True) for n, d in _zip_right(spec.args, defaults, fillvalue=UNSET)),
-                ((n, d, False) for n, d in ((a, kwonlydefaults.get(a, UNSET)) for a in spec.kwonlyargs)),
+        args = tuple(
+            Arg(name, annotations.get(name, spec.annotations.get(name, Any)), default, is_positional, is_zipped)
+            for name, default, is_positional, is_zipped in chain(
+                ((n, d, True, False) for n, d in _zip_right(spec.args, spec.defaults or (), fillvalue=UNSET)),
+                ((n, d, False, False) for n, d in ((a, kwonlydefaults.get(a, UNSET)) for a in spec.kwonlyargs)),
+                ((spec.varargs, UNSET, True, True),) if spec.varargs else (),
+                ((spec.varkw, UNSET, False, True),) if spec.varkw else (),
             )
-        ]
-
-        if spec.varargs:
-            args.append(Arg(spec.varargs, typ(spec.varargs), UNSET, is_positional=True, is_zipped=True))
-
-        if spec.varkw:
-            args.append(Arg(spec.varkw, typ(spec.varkw), UNSET, is_positional=False, is_zipped=True))
+        )
 
         result_type = annotations.get('result', spec.annotations.get('return'))
         result = Arg('result', result_type, UNSET, False, False) if result_type else None
 
-        return cls(func, name or func.__name__, tuple(args), result)
+        return cls(func, name or func.__name__, args, result)
 
     def __init__(self, func: Callable, name: str, args: Tuple[Arg], result: Optional[Arg]):
         self.func = func
@@ -54,7 +46,7 @@ class Route:
         self.args = args
         self.result = result
 
-    def _validate(self, params: Union[list, dict], customs: Optional[dict] = None) -> Tuple[list, dict]:
+    def _validate(self, params: Any, customs: Optional[Dict[type, Any]] = None) -> Tuple[list, dict]:
         if customs is None:
             customs = {}
 
