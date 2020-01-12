@@ -40,7 +40,7 @@ class Route:
 
         return cls(func, name or func.__name__, args, result)
 
-    def __init__(self, func: Callable, name: str, args: Tuple[Arg], result: Optional[Arg]):
+    def __init__(self, func: Callable, name: str, args: Tuple[Arg, ...], result: Optional[Arg]):
         self.func = func
         self.name = name
         self.args = args
