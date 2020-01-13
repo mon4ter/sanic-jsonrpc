@@ -139,6 +139,10 @@ def app():
     def default_kwarg(*, a: str, b: str = '-') -> str:
         return a + b
 
+    @jsonrpc
+    def recover_once(first: bool, second: bool) -> bool:
+        return first and second
+
     return app_
 
 
@@ -273,6 +277,12 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'default_kwarg', 'params': {'a': 123}, 'id': 39},
     {'jsonrpc': '2.0', 'result': '123-', 'id': 39}
+), (
+    {'jsonrpc': '2.0', 'method': 'recover_once', 'params': [True, True], 'id': 40},
+    {'jsonrpc': '2.0', 'result': True, 'id': 40}
+), (
+    {'jsonrpc': '2.0', 'method': 'recover_once', 'params': True, 'id': 41},
+    {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 41}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)

@@ -88,7 +88,6 @@ class Route:
                     )
                 except ArgError:
                     if not recover_allowed:
-                        # TODO test recover once
                         raise
 
                     value = arg.validate(params)
