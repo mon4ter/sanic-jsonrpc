@@ -13,15 +13,18 @@ __all__ = [
 ]
 
 
-def _zip_right(*iterables, fillvalue=None) -> Iterable:
+def _zip_right(*iterables: Iterable, fillvalue: Any = None) -> Iterable:
     return reversed(tuple(zip_longest(*map(reversed, iterables), fillvalue=fillvalue)))
 
 
 class Route:
-    __slots__ = ('func', 'name', 'args', 'result')
+    __slots__ = ('func', 'method', 'args', 'result')
 
     @classmethod
-    def from_inspect(cls, func: Callable, name: Optional[str], annotations: Dict[str, type]) -> 'Route':
+    def from_inspect(cls, func: Callable, method: Optional[str], annotations: Dict[str, type]) -> 'Route':
+        if not method:
+            method = func.__name__
+
         spec = getfullargspec(func)
         kwonlydefaults = spec.kwonlydefaults or {}
 
@@ -38,11 +41,11 @@ class Route:
         result_type = annotations.get('result', spec.annotations.get('return'))
         result = Arg('result', result_type, UNSET, False, False) if result_type else None
 
-        return cls(func, name or func.__name__, args, result)
+        return cls(func, method, args, result)
 
-    def __init__(self, func: Callable, name: str, args: Tuple[Arg, ...], result: Optional[Arg]):
+    def __init__(self, func: Callable, method: str, args: Tuple[Arg, ...], result: Optional[Arg]):
         self.func = func
-        self.name = name
+        self.method = method
         self.args = args
         self.result = result
 

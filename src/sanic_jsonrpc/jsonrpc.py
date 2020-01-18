@@ -1,7 +1,7 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, Queue, ensure_future, gather, shield, wait
 from functools import partial
 from logging import getLogger
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Union, Tuple
 
 from fashionable import ModelAttributeError, ModelError, UNSET
 from sanic import Sanic
@@ -310,55 +310,41 @@ class Jsonrpc:
 
     def __call__(
             self,
-            name_: Optional[str] = None,
+            method_: Optional[str] = None,
             *,
-            is_post_: Optional[bool] = None,
-            is_request_: Optional[bool] = None,
+            is_post_: Tuple[bool, ...] = (True, False),
+            is_request_: Tuple[bool, ...] = (True, False),
             **annotations: type
     ) -> Callable:
-        if isinstance(name_, Callable):
-            return self.__call__(is_post_=is_post_, is_request_=is_request_)(name_)
+        if isinstance(method_, Callable):
+            return self.__call__(is_post_=is_post_, is_request_=is_request_)(method_)
 
         def deco(func: Callable) -> Callable:
-            route = Route.from_inspect(func, name_, annotations)
-
-            if is_post_ is None and is_request_ is None:
-                self._routes[True, True, route.name] = route
-                self._routes[True, False, route.name] = route
-                self._routes[False, True, route.name] = route
-                self._routes[False, False, route.name] = route
-            elif is_post_ is None:
-                self._routes[True, is_request_, route.name] = route
-                self._routes[False, is_request_, route.name] = route
-            elif is_request_ is None:
-                self._routes[is_post_, True, route.name] = route
-                self._routes[is_post_, False, route.name] = route
-            else:
-                self._routes[is_post_, is_request_, route.name] = route
-
+            route = Route.from_inspect(func, method_, annotations)
+            self._routes.update({(ip, ir, route.method): route for ip in is_post_ for ir in is_request_})
             return func
         return deco
 
-    def post(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=True, **annotations)
+    def post(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(True,), **annotations)
 
-    def ws(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=False, **annotations)
+    def ws(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(False,), **annotations)
 
-    def request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_request_=True, **annotations)
+    def request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_request_=(True,), **annotations)
 
-    def notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_request_=False, **annotations)
+    def notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_request_=(False,), **annotations)
 
-    def post_request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=True, is_request_=True, **annotations)
+    def post_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(True,), is_request_=(True,), **annotations)
 
-    def ws_request(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=False, is_request_=True, **annotations)
+    def ws_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(False,), is_request_=(True,), **annotations)
 
-    def post_notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=True, is_request_=False, **annotations)
+    def post_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(True,), is_request_=(False,), **annotations)
 
-    def ws_notification(self, name_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(name_, is_post_=False, is_request_=False, **annotations)
+    def ws_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
+        return self.__call__(method_, is_post_=(False,), is_request_=(False,), **annotations)
