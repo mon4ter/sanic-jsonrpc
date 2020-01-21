@@ -49,10 +49,7 @@ class Route:
         self.args = args
         self.result = result
 
-    def _validate(self, params: Any, customs: Optional[Dict[type, Any]] = None) -> Tuple[list, dict]:
-        if customs is None:
-            customs = {}
-
+    def _validate(self, params: Any, customs: Dict[type, Any]) -> Tuple[list, dict]:
         list_params = None
         dict_params = None
 
