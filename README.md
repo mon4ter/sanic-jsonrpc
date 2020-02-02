@@ -9,10 +9,10 @@ JSON-RPC 2.0 support for Sanic over HTTP and WebSocket
 ### server.py
 ```python
 from sanic import Sanic
-from sanic_jsonrpc import Jsonrpc
+from sanic_jsonrpc import SanicJsonrpc
 
 app = Sanic('server')
-jsonrpc = Jsonrpc(app, post_route='/api/rpc/post', ws_route='/api/rpc/ws')
+jsonrpc = SanicJsonrpc(app, post_route='/api/rpc/post', ws_route='/api/rpc/ws')
 
 @jsonrpc
 def sub(a: int, b: int) -> int:

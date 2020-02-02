@@ -13,8 +13,8 @@ setup(
     version=version,
     packages=[
         'sanic_jsonrpc',
+        'sanic_jsonrpc._routing',
         'sanic_jsonrpc.models',
-        'sanic_jsonrpc.routing',
     ],
     package_dir={'': 'src'},
     install_requires=[

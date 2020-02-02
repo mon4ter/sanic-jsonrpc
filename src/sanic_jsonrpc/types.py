@@ -1,7 +1,7 @@
 from asyncio import Future
 from typing import Union, Callable
 
-from ..models import Notification, Request, Response
+from .models import Notification, Request, Response
 
 __all__ = [
     'AnyJsonrpc',

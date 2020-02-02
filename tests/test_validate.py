@@ -7,7 +7,7 @@ from sanic.request import Request as SanicRequest
 from sanic.websocket import WebSocketProtocol
 from websockets import WebSocketCommonProtocol
 
-from sanic_jsonrpc import Jsonrpc, Notifier, Request, Notification
+from sanic_jsonrpc import SanicJsonrpc, Notifier, Request, Notification
 
 
 class Pair:
@@ -19,7 +19,7 @@ class Pair:
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
-    jsonrpc = Jsonrpc(app_, '/post', '/ws')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
 
     @jsonrpc
     def vararg(*terms: int) -> int:
@@ -87,7 +87,7 @@ def app():
 
     @jsonrpc.ws
     def notifier_positional(n: Notifier) -> bool:
-        return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
+        return n.__qualname__ == SanicJsonrpc.__name__ + '._notifier.<locals>.notifier'
 
     @jsonrpc.post
     def notifier_keyword(*, n: Notifier) -> bool:
@@ -95,7 +95,7 @@ def app():
 
     @jsonrpc.ws
     def notifier_keyword(*, n: Notifier) -> bool:
-        return n.__qualname__ == 'Jsonrpc._notifier.<locals>.notifier'
+        return n.__qualname__ == SanicJsonrpc.__name__ + '._notifier.<locals>.notifier'
 
     @jsonrpc
     def params_types(word: str, multi: int) -> str:

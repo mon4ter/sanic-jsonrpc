@@ -6,19 +6,20 @@ from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
 from websockets import WebSocketCommonProtocol as WebSocket
 
-from ._base import JsonrpcBase
-from .loggers import logger
-from .types import Outgoing, Notifier, Incoming
+from ._basejsonrpc import BaseJsonrpc
+from .._routing import Route
+from ..loggers import logger
 from ..models import Notification, Response, Request
-from ..routing import Route
+from ..types import Outgoing, Notifier, Incoming
 
 __all__ = [
     'Jsonrpc',
+    'SanicJsonrpc',
 ]
 
 
 # TODO middleware
-class Jsonrpc(JsonrpcBase):
+class SanicJsonrpc(BaseJsonrpc):
     def _customs(self, sr: SanicRequest, in_: Incoming, ws: Optional[WebSocket] = None) -> Dict[type, Any]:
         return {
             SanicRequest: sr,
@@ -166,3 +167,14 @@ class Jsonrpc(JsonrpcBase):
 
         if ws_route:
             self.app.add_websocket_route(self._ws, ws_route)
+
+
+class Jsonrpc(SanicJsonrpc):
+    def __init__(self, *args, **kwargs):
+        from warnings import warn
+        warn(
+            "Class {} has been renamed to {}".format(self.__class__.__name__, super().__class__.__name__),
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)

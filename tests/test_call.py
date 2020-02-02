@@ -4,13 +4,13 @@ from logging import DEBUG
 from pytest import fixture, mark
 from sanic import Sanic
 
-from sanic_jsonrpc import Error, Jsonrpc
+from sanic_jsonrpc import Error, SanicJsonrpc
 
 
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
-    jsonrpc = Jsonrpc(app_, '/post', '/ws')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
 
     @jsonrpc
     async def awaitable():

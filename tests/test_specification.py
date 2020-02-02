@@ -9,7 +9,7 @@ from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 from ujson import loads
 
-from sanic_jsonrpc import Jsonrpc
+from sanic_jsonrpc import SanicJsonrpc
 
 
 def lists_equal_unordered(self: list, other: list) -> bool:
@@ -19,7 +19,7 @@ def lists_equal_unordered(self: list, other: list) -> bool:
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
-    jsonrpc = Jsonrpc(app_, '/post', '/ws')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
 
     @jsonrpc
     def subtract(minuend: int, subtrahend: int) -> int:

@@ -4,13 +4,13 @@ from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 
-from sanic_jsonrpc import Jsonrpc
+from sanic_jsonrpc import SanicJsonrpc
 
 
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
-    jsonrpc = Jsonrpc(app_, '/post', '/ws')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
 
     @jsonrpc
     def default():
