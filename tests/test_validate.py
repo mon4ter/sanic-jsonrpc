@@ -87,7 +87,7 @@ def app():
 
     @jsonrpc.ws
     def notifier_positional(n: Notifier) -> bool:
-        return n.__qualname__ == SanicJsonrpc.__name__ + '._notifier.<locals>.notifier'
+        return isinstance(n, Notifier)
 
     @jsonrpc.post
     def notifier_keyword(*, n: Notifier) -> bool:
@@ -95,7 +95,7 @@ def app():
 
     @jsonrpc.ws
     def notifier_keyword(*, n: Notifier) -> bool:
-        return n.__qualname__ == SanicJsonrpc.__name__ + '._notifier.<locals>.notifier'
+        return isinstance(n, Notifier)
 
     @jsonrpc
     def params_types(word: str, multi: int) -> str:

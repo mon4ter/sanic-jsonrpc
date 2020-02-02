@@ -10,7 +10,8 @@ from ._basejsonrpc import BaseJsonrpc
 from .._routing import Route
 from ..loggers import logger
 from ..models import Notification, Response, Request
-from ..types import Outgoing, Notifier, Incoming
+from ..notifier import Notifier
+from ..types import Outgoing, Incoming
 
 __all__ = [
     'Jsonrpc',
@@ -20,15 +21,21 @@ __all__ = [
 
 # TODO middleware
 class SanicJsonrpc(BaseJsonrpc):
-    def _customs(self, sr: SanicRequest, in_: Incoming, ws: Optional[WebSocket] = None) -> Dict[type, Any]:
+    def _customs(
+            self,
+            sanic_request: SanicRequest,
+            incoming: Incoming,
+            ws: Optional[WebSocket] = None,
+            notifier: Optional[Notifier] = None
+    ) -> Dict[type, Any]:
         return {
-            SanicRequest: sr,
+            SanicRequest: sanic_request,
             WebSocket: ws,
             Sanic: self.app,
-            Request: in_,
-            Notification: in_,
-            Incoming: in_,
-            Notifier: self._notifier(ws) if ws else None,
+            Request: incoming,
+            Notification: incoming,
+            Incoming: incoming,
+            Notifier: notifier,
         }
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
@@ -75,8 +82,9 @@ class SanicJsonrpc(BaseJsonrpc):
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocket):
         recv = None
         pending = set()
+        notifier = Notifier(ws, self._ws_outgoing, self._finalise_future)
 
-        while True:
+        while ws.open:
             if recv not in pending:
                 recv = ensure_future(ws.recv())
                 pending.add(recv)
@@ -123,41 +131,19 @@ class SanicJsonrpc(BaseJsonrpc):
 
                     continue
 
-                fut = self._register_call(incoming, route, self._customs(sanic_request, incoming, ws))
+                fut = self._register_call(incoming, route, self._customs(sanic_request, incoming, ws, notifier))
 
                 if isinstance(incoming, Request):
                     pending.add(fut)
 
-    def _notifier_done_callback(self, fut: Future):
-        self._finalise_future(fut)
+        notifier.close()
 
-        if fut in self._notifications:
-            self._notifications.remove(fut)
-
-    def _notifier(self, ws: WebSocket) -> Notifier:
-        def notifier(notification: Notification) -> Future:
-            if not isinstance(notification, Notification):
-                # TODO test invalid usage
-                raise TypeError("Notifier's arg must be a Notification, not {!r}", notification.__class__.__name__)
-
-            # TODO test outgoing notifications
-            fut = self._ws_outgoing(ws, notification)
-            fut.add_done_callback(self._notifier_done_callback)
-            # TODO test no leak
-            self._notifications.add(fut)
-            return fut
-        return notifier
-
-    async def _stop_processing(self, _app, _loop):
-        await super()._stop_processing(_app, _loop)
-
-        for fut in self._notifications:
-            self._finalise_future(fut)
+        for fut in pending:
+            fut.cancel()
 
     def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
         super().__init__()
         self.app = app
-        self._notifications = set()
         self._processing_task = None
         app.listener('after_server_start')(self._start_processing)
         app.listener('before_server_stop')(self._stop_processing)
@@ -169,6 +155,7 @@ class SanicJsonrpc(BaseJsonrpc):
             self.app.add_websocket_route(self._ws, ws_route)
 
 
+# TODO Test warning
 class Jsonrpc(SanicJsonrpc):
     def __init__(self, *args, **kwargs):
         from warnings import warn

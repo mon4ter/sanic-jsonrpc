@@ -119,6 +119,7 @@ class BaseJsonrpc:
             err = fut.exception()
 
             if err:
+                # TODO Test error in future
                 logger.error("%s", err, exc_info=err)
             else:
                 return fut.result()
