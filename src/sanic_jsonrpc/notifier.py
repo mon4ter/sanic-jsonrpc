@@ -13,7 +13,6 @@ _Sender = Callable[[WebSocket, Notification], Future]
 _Finalizer = Callable[[Future], Any]
 
 
-# TODO Test Notifier
 class Notifier:
     def __init__(self, ws: WebSocket, sender: _Sender, finalizer: _Finalizer):
         # TODO Deny manual instantiation
@@ -41,6 +40,6 @@ class Notifier:
         self._pending.add(fut)
         return fut
 
-    def close(self):
+    def cancel(self):
         for fut in self._pending:
             fut.cancel()

@@ -136,7 +136,7 @@ class SanicJsonrpc(BaseJsonrpc):
                 if isinstance(incoming, Request):
                     pending.add(fut)
 
-        notifier.close()
+        notifier.cancel()
 
         for fut in pending:
             fut.cancel()
