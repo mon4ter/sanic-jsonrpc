@@ -33,6 +33,16 @@ def app():
     def raise_exception():
         return {}['1']
 
+    @jsonrpc
+    def unserializable_response():
+        data = {'data': None}
+        data['data'] = data
+        return data
+
+    @jsonrpc.notification
+    async def long_operation():
+        await sleep(0.1)
+
     return app_
 
 
@@ -56,9 +66,22 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'raise_exception', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': 5}
+), (
+    {'jsonrpc': '2.0', 'method': 'unserializable_response', 'id': 6},
+    {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': "Internal error"}, 'id': None}
+), (
+    [
+        {'jsonrpc': '2.0', 'method': 'long_operation'},
+        {'jsonrpc': '2.0', 'method': 'long_operation'},
+    ],
+    ''
 )])
 async def test_call(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    data = await response.json()
+    if response.headers['content-type'] == 'application/json':
+        data = await response.json()
+    else:
+        data = await response.text()
+
     assert data == out

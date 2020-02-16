@@ -15,7 +15,6 @@ _Finalizer = Callable[[Future], Any]
 
 class Notifier:
     def __init__(self, ws: WebSocket, sender: _Sender, finalizer: _Finalizer):
-        # TODO Deny manual instantiation
         self._ws = ws
         self._sender = sender
         self._finalizer = finalizer

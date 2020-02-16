@@ -15,6 +15,7 @@ __all__ = [
     'BaseJsonrpc',
 ]
 
+# TODO make '2.0' default
 _response = partial(Response, '2.0')
 
 
@@ -53,10 +54,9 @@ class BaseJsonrpc:
     def _serialize(self, obj: Any) -> str:
         try:
             return dumps(obj)
-        except (TypeError, ValueError) as err:
-            # TODO test unserializable response
+        except Exception as err:
             logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
-            return self._serialize(_response(error=INTERNAL_ERROR))
+            return self._serialize(dict(_response(error=INTERNAL_ERROR)))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
@@ -141,7 +141,6 @@ class BaseJsonrpc:
         calls = self._calls
 
         while not calls.empty():
-            # TODO test stop Sanic while call is processing
             await calls.get_nowait()
 
     def __init__(self):
