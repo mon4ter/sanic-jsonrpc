@@ -92,14 +92,12 @@ class SanicJsonrpc(BaseJsonrpc):
             try:
                 done, pending = await wait(pending, return_when=FIRST_COMPLETED)
             except CancelledError:
-                # TODO test pending futures while closing WS
                 for fut in pending:
                     self._finalise_future(fut)
 
                 break
 
             for fut in done:
-                # TODO test exception in call
                 result = self._finalise_future(fut)
 
                 if not result:
@@ -155,12 +153,11 @@ class SanicJsonrpc(BaseJsonrpc):
             self.app.add_websocket_route(self._ws, ws_route)
 
 
-# TODO Test warning
 class Jsonrpc(SanicJsonrpc):
     def __init__(self, *args, **kwargs):
         from warnings import warn
         warn(
-            "Class {} has been renamed to {}".format(self.__class__.__name__, super().__class__.__name__),
+            "Class {} has been renamed to {}".format(self.__class__.__name__, self.__class__.__base__.__name__),
             DeprecationWarning,
             stacklevel=2,
         )

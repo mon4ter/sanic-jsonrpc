@@ -32,10 +32,7 @@ class Notifier:
             self._pending.remove(fut)
 
     def send(self, notification: Notification) -> Future:
-        if self.closed:
-            return ensure_future(self._ws.ensure_open())
-
-        fut = self._sender(self._ws, notification)
+        fut = self._sender(self._ws, notification) if self._ws.open else ensure_future(self._ws.ensure_open())
         fut.add_done_callback(self._done_callback)
         self._pending.add(fut)
         return fut
