@@ -32,20 +32,20 @@ def app():
 
     @jsonrpc
     def send_nowait(notifier: Notifier):
-        notifier.send(Notification('2.0', 'send_nowait', None))
+        notifier.send(Notification('send_nowait', None))
 
     @jsonrpc
     async def send_wait(notifier: Notifier):
-        await notifier.send(Notification('2.0', 'send_wait', None))
+        await notifier.send(Notification('send_wait', None))
 
     @jsonrpc
     def cancel(notifier: Notifier):
-        notifier.send(Notification('2.0', 'cancel', None))
+        notifier.send(Notification('cancel', None))
         notifier.cancel()
 
     async def subscription(notifier: Notifier):
         while not notifier.closed:
-            await notifier.send(Notification('2.0', 'subscription', None))
+            await notifier.send(Notification('subscription', None))
             await sleep(0.1)
 
     @jsonrpc
@@ -54,7 +54,7 @@ def app():
 
     async def send(notifier: Notifier):
         await sleep(0.1)
-        await notifier.send(Notification('2.0', 'send', None))
+        await notifier.send(Notification('send', None))
 
     @jsonrpc
     def send_closed(notifier: Notifier):

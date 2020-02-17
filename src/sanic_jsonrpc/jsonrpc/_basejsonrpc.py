@@ -1,5 +1,4 @@
 from asyncio import shield, Future, Queue, ensure_future
-from functools import partial
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Union, Tuple
 
 from fashionable import ModelError, ModelAttributeError, UNSET
@@ -15,9 +14,6 @@ __all__ = [
     'BaseJsonrpc',
 ]
 
-# TODO make '2.0' default
-_response = partial(Response, '2.0')
-
 
 class BaseJsonrpc:
     @staticmethod
@@ -25,7 +21,7 @@ class BaseJsonrpc:
         try:
             return loads(json)
         except (TypeError, ValueError):
-            return _response(error=PARSE_ERROR)
+            return Response(error=PARSE_ERROR)
 
     @staticmethod
     def _parse_message(message: Dict) -> AnyJsonrpc:
@@ -35,7 +31,7 @@ class BaseJsonrpc:
             if isinstance(err, ModelAttributeError) and err.kwargs['attr'] == 'id':
                 return Notification(**message)
 
-            return _response(error=INVALID_REQUEST)
+            return Response(error=INVALID_REQUEST)
 
     def _parse_messages(self, json: AnyStr) -> Union[AnyJsonrpc, List[AnyJsonrpc]]:
         messages = self._parse_json(json)
@@ -45,7 +41,7 @@ class BaseJsonrpc:
 
         if isinstance(messages, list):
             if not messages:
-                return _response(error=INVALID_REQUEST)
+                return Response(error=INVALID_REQUEST)
 
             return [self._parse_message(m) for m in messages]
 
@@ -56,7 +52,7 @@ class BaseJsonrpc:
             return dumps(obj)
         except Exception as err:
             error_logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
-            return self._serialize(dict(_response(error=INTERNAL_ERROR)))
+            return self._serialize(dict(Response(error=INTERNAL_ERROR)))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
         if not responses:
@@ -75,7 +71,7 @@ class BaseJsonrpc:
             return route
 
         if is_request:
-            return _response(error=METHOD_NOT_FOUND, id=incoming.id)
+            return Response(error=METHOD_NOT_FOUND, id=incoming.id)
 
     def _register_call(self, *args, **kwargs) -> Future:
         fut = shield(self._call(*args, **kwargs))
@@ -109,7 +105,7 @@ class BaseJsonrpc:
                 result = ret
 
         if isinstance(incoming, Request):
-            response = _response(result=result, error=error, id=incoming.id)
+            response = Response(result=result, error=error, id=incoming.id)
             traffic_logger.debug("<-- %r", response)
             return response
 
