@@ -8,7 +8,7 @@ from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
 from .._routing import Route
-from ..loggers import logger
+from ..loggers import logger, traffic_logger
 from ..models import Notification, Response, Request
 from ..notifier import Notifier
 from ..types import Outgoing, Incoming
@@ -77,6 +77,7 @@ class SanicJsonrpc(BaseJsonrpc):
         return HTTPResponse(body, 207, content_type=content_type)
 
     def _ws_outgoing(self, ws: WebSocket, outgoing: Outgoing) -> Future:
+        traffic_logger.debug("<-- %r", outgoing)
         return ensure_future(ws.send(self._serialize(dict(outgoing))))
 
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocket):

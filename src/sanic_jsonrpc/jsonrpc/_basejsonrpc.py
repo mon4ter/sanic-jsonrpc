@@ -7,7 +7,7 @@ from ujson import dumps, loads
 
 from .._routing import Route, ArgError, ResultError
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
-from ..loggers import logger
+from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc, Incoming
 
@@ -55,7 +55,7 @@ class BaseJsonrpc:
         try:
             return dumps(obj)
         except Exception as err:
-            logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
+            error_logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
             return self._serialize(dict(_response(error=INTERNAL_ERROR)))
 
     def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
@@ -84,7 +84,7 @@ class BaseJsonrpc:
 
     @staticmethod
     async def _call(incoming: Incoming, route: Route, customs: Dict[type, Any]) -> Optional[Response]:
-        logger.debug("--> %r", incoming)
+        traffic_logger.debug("--> %r", incoming)
 
         error = UNSET
         result = UNSET
@@ -92,7 +92,7 @@ class BaseJsonrpc:
         try:
             ret = await route.call(incoming.params, customs)
         except ResultError as err:
-            logger.error("%r failed: %s", incoming, err, exc_info=err)
+            error_logger.error("%r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         except ArgError as err:
             logger.debug("Invalid %r: %s", incoming, err)
@@ -100,7 +100,7 @@ class BaseJsonrpc:
         except Error as err:
             error = err
         except Exception as err:
-            logger.error("%r failed: %s", incoming, err, exc_info=err)
+            error_logger.error("%r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
             if isinstance(ret, Error):
@@ -110,7 +110,7 @@ class BaseJsonrpc:
 
         if isinstance(incoming, Request):
             response = _response(result=result, error=error, id=incoming.id)
-            logger.debug("<-- %r", response)
+            traffic_logger.debug("<-- %r", response)
             return response
 
     @staticmethod
@@ -119,7 +119,7 @@ class BaseJsonrpc:
             err = fut.exception()
 
             if err:
-                logger.error("%s", err, exc_info=err)
+                error_logger.error("%s", err, exc_info=err)
             else:
                 return fut.result()
         else:
