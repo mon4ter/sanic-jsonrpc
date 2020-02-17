@@ -140,8 +140,8 @@ class SanicJsonrpc(BaseJsonrpc):
         for fut in pending:
             fut.cancel()
 
-    def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None):
-        super().__init__()
+    def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None, **kwargs):
+        super().__init__(**kwargs)
         self.app = app
         self._processing_task = None
         app.listener('after_server_start')(self._start_processing)

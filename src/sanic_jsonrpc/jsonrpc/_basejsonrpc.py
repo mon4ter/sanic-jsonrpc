@@ -1,4 +1,5 @@
 from asyncio import shield, Future, Queue, ensure_future
+from time import monotonic
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Union, Tuple
 
 from fashionable import ModelError, ModelAttributeError, UNSET
@@ -6,7 +7,7 @@ from ujson import dumps, loads
 
 from .._routing import Route, ArgError, ResultError
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
-from ..loggers import error_logger, logger, traffic_logger
+from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc, Incoming
 
@@ -78,8 +79,14 @@ class BaseJsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    @staticmethod
-    async def _call(incoming: Incoming, route: Route, customs: Dict[type, Any]) -> Optional[Response]:
+    async def _call(self, incoming: Incoming, route: Route, customs: Dict[type, Any]) -> Optional[Response]:
+        access_log = self.access_log
+
+        if access_log:
+            start = monotonic()
+        else:
+            start = None
+
         traffic_logger.debug("--> %r", incoming)
 
         error = UNSET
@@ -104,7 +111,18 @@ class BaseJsonrpc:
             else:
                 result = ret
 
-        if isinstance(incoming, Request):
+        is_request = isinstance(incoming, Request)
+
+        if access_log:
+            access_logger.info("", extra={
+                'type': incoming.__class__.__name__,
+                'method': incoming.method,
+                'id': incoming.id if is_request else '',
+                'time': '{:.6f}'.format((monotonic() - start) * 1000),
+                'error': error.code if error is not UNSET else '',
+            })
+
+        if is_request:
             response = Response(result=result, error=error, id=incoming.id)
             traffic_logger.debug("<-- %r", response)
             return response
@@ -139,7 +157,8 @@ class BaseJsonrpc:
         while not calls.empty():
             await calls.get_nowait()
 
-    def __init__(self):
+    def __init__(self, *, access_log=True):
+        self.access_log = access_log
         self._routes = {}
         self._calls = Queue()
 
