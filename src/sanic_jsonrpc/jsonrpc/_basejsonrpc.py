@@ -157,7 +157,7 @@ class BaseJsonrpc:
         while not calls.empty():
             await calls.get_nowait()
 
-    def __init__(self, *, access_log=True):
+    def __init__(self, *, access_log: bool = True):
         self.access_log = access_log
         self._routes = {}
         self._calls = Queue()
