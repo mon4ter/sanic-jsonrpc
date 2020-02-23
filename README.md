@@ -1,6 +1,7 @@
 # sanic-jsonrpc
 [![PyPI version](https://img.shields.io/pypi/v/sanic-jsonrpc.svg)](https://pypi.org/project/sanic-jsonrpc)
 [![Python version](https://img.shields.io/pypi/pyversions/sanic-jsonrpc.svg)](https://pypi.org/project/sanic-jsonrpc)
+[![Build Status](https://travis-ci.org/mon4ter/sanic-jsonrpc.svg?branch=master)](https://travis-ci.org/mon4ter/sanic-jsonrpc)
 
 JSON-RPC 2.0 support for Sanic over HTTP and WebSocket
 
