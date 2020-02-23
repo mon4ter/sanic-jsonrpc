@@ -18,11 +18,9 @@ setup(
     ],
     package_dir={'': 'src'},
     install_requires=[
-        "Sanic<19.6.0; python_version<'3.6'",
         'Sanic',
-        'fashionable>=0.9.0',
+        'fashionable',
         'ujson',
-        "websockets<7.0; python_version<'3.6'",
         'websockets',
     ],
     setup_requires=['pytest-runner'],

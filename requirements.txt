@@ -1,0 +1,9 @@
+Sanic<19.6.0; python_version<'3.6'
+Sanic>=19.12.2
+fashionable>=0.9.0
+pytest>=5.3.5
+pytest-runner>=5.2
+pytest-sanic>=1.6.0
+ujson>=1.35
+websockets<8.0; python_version<'3.6'
+websockets>=8.1
