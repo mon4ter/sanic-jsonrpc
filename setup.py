@@ -22,6 +22,7 @@ setup(
         'Sanic',
         'fashionable>=0.9.0',
         'ujson',
+        "websockets<7.0; python_version<'3.6'",
         'websockets',
     ],
     setup_requires=['pytest-runner'],
