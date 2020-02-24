@@ -6,6 +6,14 @@
 
 JSON-RPC 2.0 support for Sanic over HTTP and WebSocket
 
+## Features
+
+* Complete JSON-RPC 2.0 Specification implementation, including [batch](https://www.jsonrpc.org/specification#batch)
+* Annotation based type validation
+* Request and/or Notification routing
+* Server side Notifications
+* Access to app and request objects via annotation
+
 ## Example
 
 ### server.py
@@ -43,7 +51,7 @@ async def main():
             await ws.send_json(request)
             response = await ws.receive_json()
             print(response['result'])  # 19
-            
+
 if __name__ == '__main__':
     get_event_loop().run_until_complete(main())
 ```
