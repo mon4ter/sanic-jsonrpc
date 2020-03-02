@@ -147,6 +147,7 @@ class BaseJsonrpc:
             await call
 
     async def _start_processing(self, _app, _loop):
+        self._calls = Queue()
         self._processing_task = ensure_future(self._processing())
 
     async def _stop_processing(self, _app, _loop):
@@ -160,7 +161,7 @@ class BaseJsonrpc:
     def __init__(self, *, access_log: bool = True):
         self.access_log = access_log
         self._routes = {}
-        self._calls = Queue()
+        self._calls = None
 
     def __call__(
             self,
