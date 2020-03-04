@@ -14,6 +14,7 @@ setup(
     packages=[
         'sanic_jsonrpc',
         'sanic_jsonrpc._routing',
+        'sanic_jsonrpc.jsonrpc',
         'sanic_jsonrpc.models',
     ],
     package_dir={'': 'src'},
