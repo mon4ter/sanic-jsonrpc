@@ -215,5 +215,6 @@ async def test_ws_request(caplog, test_cli, in_: dict, out: dict):
     await ws.send_json(in_)
     data = await ws.receive_json(timeout=0.01)
     await ws.close()
+    await test_cli.close()
 
     assert data == out

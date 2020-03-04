@@ -118,6 +118,7 @@ async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):
             break
 
     await ws.close()
+    await test_cli.close()
 
     right = out
 

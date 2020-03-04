@@ -220,6 +220,7 @@ async def test_ws(caplog, test_cli, in_: List[str], out: List[str]):
             break
 
     await ws.close()
+    await test_cli.close()
 
     right = [loads(s) for s in out]
 
