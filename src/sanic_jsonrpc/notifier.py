@@ -1,5 +1,5 @@
 from asyncio import Future, ensure_future
-from typing import Callable, Any
+from typing import Any, Callable
 
 from websockets import WebSocketCommonProtocol as WebSocket
 
@@ -9,7 +9,7 @@ __all__ = [
     'Notifier',
 ]
 
-_Sender = Callable[[WebSocket, Notification], Future]
+_Sender = Callable[[Notification], Future]
 _Finalizer = Callable[[Future], Any]
 
 
@@ -31,7 +31,7 @@ class Notifier:
             self._pending.remove(fut)
 
     def send(self, notification: Notification) -> Future:
-        fut = self._sender(self._ws, notification) if self._ws.open else ensure_future(self._ws.ensure_open())
+        fut = self._sender(notification) if self._ws.open else ensure_future(self._ws.ensure_open())
         fut.add_done_callback(self._done_callback)
         self._pending.add(fut)
         return fut

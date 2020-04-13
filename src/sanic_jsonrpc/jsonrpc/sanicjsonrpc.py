@@ -1,17 +1,20 @@
-from asyncio import Future, gather, ensure_future, wait, CancelledError, FIRST_COMPLETED
-from typing import Optional, Dict, Any
+from asyncio import CancelledError, FIRST_COMPLETED, Future, ensure_future, gather, wait
+from time import monotonic
+from typing import Any, Dict, Optional
 
+from fashionable import UNSET
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.response import HTTPResponse
 from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
+from .._listening import Directions, Events, Objects, Transports
 from .._routing import Route
-from ..loggers import logger, traffic_logger
-from ..models import Notification, Response, Request
+from ..loggers import access_logger, logger, traffic_logger
+from ..models import Notification, Request, Response
 from ..notifier import Notifier
-from ..types import Outgoing, Incoming
+from ..types import Incoming, Outgoing
 
 __all__ = [
     'Jsonrpc',
@@ -19,6 +22,7 @@ __all__ = [
 ]
 
 
+# TODO Test listeners
 class SanicJsonrpc(BaseJsonrpc):
     def _customs(
             self,
@@ -37,6 +41,7 @@ class SanicJsonrpc(BaseJsonrpc):
             Incoming: incoming,
             Notifier: notifier,
             Outgoing: outgoing,
+            Response: outgoing,
         }
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
@@ -78,14 +83,24 @@ class SanicJsonrpc(BaseJsonrpc):
         return HTTPResponse(body, 207, content_type=content_type)
 
     def _ws_outgoing(self, ws: WebSocket, outgoing: Outgoing) -> Future:
-        # TODO Run listeners
+        # TODO Fix double log for Response
         traffic_logger.debug("<-- %r", outgoing)
         return ensure_future(ws.send(self._serialize(dict(outgoing))))
 
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocket):
         recv = None
         pending = set()
-        notifier = Notifier(ws, self._ws_outgoing, self._finalise_future)
+
+        def sender(outgoing: Outgoing) -> Future:
+            listeners = self._make_listeners(
+                Directions.outgoing,
+                Transports.ws,
+                Objects.notification,
+                self._customs(sanic_request, None, ws, notifier, outgoing)
+            )
+            return ensure_future(wait([listeners, self._ws_outgoing(ws, outgoing)]))
+
+        notifier = Notifier(ws, sender, self._finalise_future)
 
         while ws.open:
             if recv not in pending:
@@ -147,8 +162,15 @@ class SanicJsonrpc(BaseJsonrpc):
         for fut in pending:
             fut.cancel()
 
-    def __init__(self, app: Sanic, post_route: Optional[str] = None, ws_route: Optional[str] = None, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+            self,
+            app: Sanic,
+            post_route: Optional[str] = None,
+            ws_route: Optional[str] = None,
+            *,
+            access_log: bool = True
+    ):
+        super().__init__()
         self.app = app
         self._processing_task = None
         app.listener('after_server_start')(self._start_processing)
@@ -159,6 +181,23 @@ class SanicJsonrpc(BaseJsonrpc):
 
         if ws_route:
             self.app.add_websocket_route(self._ws, ws_route)
+
+        if access_log:
+            @self.listener(Events.request)
+            def set_time(req: Request, sanic_req: SanicRequest):
+                key = 'sanic-jsonrpc_time_{}'.format(req.id)
+                sanic_req[key] = monotonic()
+
+            @self.listener(Events.response)
+            def log_response(req: Request, res: Response, sanic_req: SanicRequest):
+                key = 'sanic-jsonrpc_time_{}'.format(req.id)
+                start = sanic_req.pop(key)
+                access_logger.info("", extra={
+                    'method': req.method,
+                    'id': req.id,
+                    'time': '{:.6f}'.format((monotonic() - start) * 1000),
+                    'error': res.error.code if res.error is not UNSET else '',
+                })
 
 
 class Jsonrpc(SanicJsonrpc):

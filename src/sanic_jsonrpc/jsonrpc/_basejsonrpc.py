@@ -1,6 +1,5 @@
-from asyncio import Future, Queue, ensure_future, shield
+from asyncio import Future, Queue, ensure_future, shield, wait
 from collections import defaultdict
-from time import monotonic
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
@@ -9,7 +8,7 @@ from ujson import dumps, loads
 from .._listening import Directions, Events, Objects, Transports
 from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
-from ..loggers import access_logger, error_logger, logger, traffic_logger
+from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc, Incoming, Outgoing
 
@@ -82,10 +81,13 @@ class BaseJsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    async def _run_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
-        for route in self._listeners[(d, t, o)]:
-            logger.debug("Calling listener %r", route.name)
-            await route.call([], customs)
+    @staticmethod
+    async def _run_listener(route: Route, customs: Dict[type, Any]):
+        logger.debug("Calling listener %r", route.method)
+        await route.call([], customs)
+
+    def _make_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]) -> Future:
+        return ensure_future(wait([self._run_listener(r, customs) for r in self._listeners[(d, t, o)]]))
 
     async def _call(
             self,
@@ -94,20 +96,13 @@ class BaseJsonrpc:
             customs: Dict[type, Any],
             is_post: bool,
     ) -> Optional[Response]:
-        access_log = self.access_log
-
-        if access_log:
-            start = monotonic()
-        else:
-            start = None
-
         transport = Transports.post if is_post else Transports.ws
         is_request = isinstance(incoming, Request)
         error = UNSET
         result = UNSET
 
         try:
-            await self._run_listeners(
+            await self._make_listeners(
                 Directions.incoming,
                 transport,
                 Objects.request if is_request else Objects.notification,
@@ -132,20 +127,11 @@ class BaseJsonrpc:
             else:
                 result = ret
 
-        if access_log:
-            access_logger.info("", extra={
-                'type': incoming.__class__.__name__,
-                'method': incoming.method,
-                'id': incoming.id if is_request else '',
-                'time': '{:.6f}'.format((monotonic() - start) * 1000),
-                'error': error.code if error is not UNSET else '',
-            })
-
         if is_request:
-            response = customs[Outgoing] = Response(result=result, error=error, id=incoming.id)
+            response = customs[Response] = customs[Outgoing] = Response(result=result, error=error, id=incoming.id)
 
             try:
-                await self._run_listeners(
+                await self._make_listeners(
                     Directions.outgoing,
                     transport,
                     Objects.response,
@@ -191,8 +177,7 @@ class BaseJsonrpc:
         while not calls.empty():
             await calls.get_nowait()
 
-    def __init__(self, *, access_log: bool = True):
-        self.access_log = access_log
+    def __init__(self):
         self._listeners = defaultdict(list)
         self._routes = {}
         self._calls = None
@@ -200,6 +185,8 @@ class BaseJsonrpc:
     def listener(self, event: Union[Events, str], **annotations: type) -> Callable:
         if isinstance(event, str):
             event = Events[event]
+
+        event = event.value
 
         def deco(func: Callable) -> Callable:
             route = Route.from_inspect(func, None, annotations)
