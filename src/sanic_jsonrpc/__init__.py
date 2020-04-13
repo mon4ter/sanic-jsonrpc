@@ -1,4 +1,5 @@
 from .errors import *
+from .event import *
 from .jsonrpc import *
 from .loggers import *
 from .models import *
@@ -7,6 +8,7 @@ from .types import *
 
 __all__ = [
     *errors.__all__,
+    *event.__all__,
     *jsonrpc.__all__,
     *loggers.__all__,
     *models.__all__,
@@ -14,4 +16,4 @@ __all__ = [
     *types.__all__,
 ]
 
-__version__ = '0.2.2'
+__version__ = '0.3.0'

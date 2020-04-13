@@ -1,12 +1,14 @@
-from asyncio import shield, Future, Queue, ensure_future
+from asyncio import Future, Queue, ensure_future, shield
+from collections import defaultdict
 from time import monotonic
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Union, Tuple
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
-from fashionable import ModelError, ModelAttributeError, UNSET
+from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
 
-from .._routing import Route, ArgError, ResultError
+from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
+from ..event import Events
 from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc, Incoming
@@ -160,8 +162,27 @@ class BaseJsonrpc:
 
     def __init__(self, *, access_log: bool = True):
         self.access_log = access_log
+        self._listeners = defaultdict(list)
         self._routes = {}
         self._calls = None
+
+    def listener(self, event: Union[Events, str]) -> Callable:
+        if isinstance(event, str):
+            event = Events[event]
+
+        def deco(func: Callable) -> Callable:
+            keys = {
+                (d, t, o)
+                for d in event.directions
+                for t in event.transports
+                for o in event.objects
+            }
+
+            for key in keys:
+                self._listeners[key].append(func)
+
+            return func
+        return deco
 
     def __call__(
             self,
