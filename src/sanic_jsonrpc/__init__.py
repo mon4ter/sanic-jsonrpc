@@ -1,5 +1,4 @@
 from .errors import *
-from .event import *
 from .jsonrpc import *
 from .loggers import *
 from .models import *
@@ -8,7 +7,6 @@ from .types import *
 
 __all__ = [
     *errors.__all__,
-    *event.__all__,
     *jsonrpc.__all__,
     *loggers.__all__,
     *models.__all__,

@@ -1,10 +1,10 @@
 from enum import Enum
 
 __all__ = [
-    '_Transports',
+    'Transports',
 ]
 
 
-class _Transports(Enum):
+class Transports(Enum):
     post = 1
     ws = 2

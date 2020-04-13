@@ -1,11 +1,11 @@
 from enum import Enum
 
 __all__ = [
-    '_Objects',
+    'Objects',
 ]
 
 
-class _Objects(Enum):
+class Objects(Enum):
     request = 1,
     response = 2
     notification = 3

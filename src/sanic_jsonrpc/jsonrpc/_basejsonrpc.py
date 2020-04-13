@@ -6,15 +6,16 @@ from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
 
+from .._listening import Directions, Events, Objects, Transports
 from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
-from ..event import Events
 from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
-from ..types import AnyJsonrpc, Incoming
+from ..types import AnyJsonrpc, Incoming, Outgoing
 
 __all__ = [
     'BaseJsonrpc',
+    'Events',
 ]
 
 
@@ -81,7 +82,18 @@ class BaseJsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    async def _call(self, incoming: Incoming, route: Route, customs: Dict[type, Any]) -> Optional[Response]:
+    async def _run_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
+        for route in self._listeners[(d, t, o)]:
+            logger.debug("Calling listener %r", route.name)
+            await route.call([], customs)
+
+    async def _call(
+            self,
+            incoming: Incoming,
+            route: Route,
+            customs: Dict[type, Any],
+            is_post: bool,
+    ) -> Optional[Response]:
         access_log = self.access_log
 
         if access_log:
@@ -89,12 +101,19 @@ class BaseJsonrpc:
         else:
             start = None
 
-        traffic_logger.debug("--> %r", incoming)
-
+        transport = Transports.post if is_post else Transports.ws
+        is_request = isinstance(incoming, Request)
         error = UNSET
         result = UNSET
 
         try:
+            await self._run_listeners(
+                Directions.incoming,
+                transport,
+                Objects.request if is_request else Objects.notification,
+                customs,
+            )
+            traffic_logger.debug("--> %r", incoming)
             ret = await route.call(incoming.params, customs)
         except ResultError as err:
             error_logger.error("%r failed: %s", incoming, err, exc_info=err)
@@ -113,8 +132,6 @@ class BaseJsonrpc:
             else:
                 result = ret
 
-        is_request = isinstance(incoming, Request)
-
         if access_log:
             access_logger.info("", extra={
                 'type': incoming.__class__.__name__,
@@ -125,7 +142,21 @@ class BaseJsonrpc:
             })
 
         if is_request:
-            response = Response(result=result, error=error, id=incoming.id)
+            response = customs[Outgoing] = Response(result=result, error=error, id=incoming.id)
+
+            try:
+                await self._run_listeners(
+                    Directions.outgoing,
+                    transport,
+                    Objects.response,
+                    customs,
+                )
+            except Error as err:
+                response = Response(result=response.result, error=err, id=response.id)
+            except Exception as err:
+                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                response = Response(result=response.result, error=INTERNAL_ERROR, id=response.id)
+
             traffic_logger.debug("<-- %r", response)
             return response
 
@@ -166,11 +197,13 @@ class BaseJsonrpc:
         self._routes = {}
         self._calls = None
 
-    def listener(self, event: Union[Events, str]) -> Callable:
+    def listener(self, event: Union[Events, str], **annotations: type) -> Callable:
         if isinstance(event, str):
             event = Events[event]
 
         def deco(func: Callable) -> Callable:
+            route = Route.from_inspect(func, None, annotations)
+            route.result = None
             keys = {
                 (d, t, o)
                 for d in event.directions
@@ -179,7 +212,7 @@ class BaseJsonrpc:
             }
 
             for key in keys:
-                self._listeners[key].append(func)
+                self._listeners[key].append(route)
 
             return func
         return deco

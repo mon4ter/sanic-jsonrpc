@@ -19,23 +19,24 @@ __all__ = [
 ]
 
 
-# TODO middleware
 class SanicJsonrpc(BaseJsonrpc):
     def _customs(
             self,
             sanic_request: SanicRequest,
-            incoming: Incoming,
+            incoming: Optional[Incoming] = None,
             ws: Optional[WebSocket] = None,
-            notifier: Optional[Notifier] = None
+            notifier: Optional[Notifier] = None,
+            outgoing: Optional[Outgoing] = None
     ) -> Dict[type, Any]:
         return {
             SanicRequest: sanic_request,
             WebSocket: ws,
             Sanic: self.app,
             Request: incoming,
-            Notification: incoming,
+            Notification: incoming or outgoing,
             Incoming: incoming,
             Notifier: notifier,
+            Outgoing: outgoing,
         }
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
@@ -64,7 +65,7 @@ class SanicJsonrpc(BaseJsonrpc):
 
                 continue
 
-            fut = self._register_call(incoming, route, self._customs(sanic_request, incoming))
+            fut = self._register_call(incoming, route, self._customs(sanic_request, incoming), is_post=True)
 
             if isinstance(incoming, Request):
                 futures.append(fut)
@@ -77,6 +78,7 @@ class SanicJsonrpc(BaseJsonrpc):
         return HTTPResponse(body, 207, content_type=content_type)
 
     def _ws_outgoing(self, ws: WebSocket, outgoing: Outgoing) -> Future:
+        # TODO Run listeners
         traffic_logger.debug("<-- %r", outgoing)
         return ensure_future(ws.send(self._serialize(dict(outgoing))))
 
@@ -130,7 +132,12 @@ class SanicJsonrpc(BaseJsonrpc):
 
                     continue
 
-                fut = self._register_call(incoming, route, self._customs(sanic_request, incoming, ws, notifier))
+                fut = self._register_call(
+                    incoming,
+                    route,
+                    self._customs(sanic_request, incoming, ws, notifier),
+                    is_post=False,
+                )
 
                 if isinstance(incoming, Request):
                     pending.add(fut)
