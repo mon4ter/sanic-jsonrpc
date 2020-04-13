@@ -1,11 +1,11 @@
-fashionable>=0.9.0
+fashionable>=0.10.1
 pytest-cov>=2.8.1
 pytest-runner>=5.2
 pytest-sanic<1.2.0; python_version<'3.6'
-pytest-sanic>=1.6.0; python_version>='3.6'
-pytest>=5.3.5
+pytest-sanic>=1.6.1; python_version>='3.6'
+pytest>=5.4.1
 sanic<19.6.0; python_version<'3.6'
 sanic>=19.12.2; python_version>='3.6'
-ujson>=1.35
+ujson>=2.0.3
 websockets<8.0; python_version<'3.6'
 websockets>=8.1; python_version>='3.6'

@@ -1,5 +1,4 @@
 from logging import DEBUG
-from typing import Tuple
 
 from pytest import fixture, mark
 from sanic import Sanic
@@ -15,6 +14,10 @@ class Pair:
         self.first = int(first)
         self.second = int(second)
 
+    def __iter__(self):
+        yield 'first', self.first
+        yield 'second', self.second
+
 
 @fixture
 def app():
@@ -25,9 +28,9 @@ def app():
     def vararg(*terms: int) -> int:
         return sum(terms)
 
-    @jsonrpc(result=Pair)
-    def result(number: int) -> Tuple[int, int]:
-        return number // 10, number % 10
+    @jsonrpc(result=dict)
+    def result(number: int) -> Pair:
+        return Pair(number // 10, number % 10)
 
     @jsonrpc(result=int)
     def invalid_response(s: int) -> str:
@@ -101,11 +104,11 @@ def app():
     def params_types(word: str, multi: int) -> str:
         return word * multi
 
-    @jsonrpc
+    @jsonrpc(result=dict)
     def class_args(p1: Pair, p2: Pair) -> Pair:
         return Pair(p1.first + p2.first, p1.second + p2.second)
 
-    @jsonrpc
+    @jsonrpc(result=dict)
     def class_vararg(*pairs: Pair) -> Pair:
         return Pair(sum(p.first for p in pairs), sum(p.second for p in pairs))
 
