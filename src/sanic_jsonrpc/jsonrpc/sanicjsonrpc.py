@@ -23,7 +23,6 @@ __all__ = [
 ]
 
 
-# TODO Test listeners
 class SanicJsonrpc(BaseJsonrpc):
     def _customs(
             self,
@@ -33,16 +32,16 @@ class SanicJsonrpc(BaseJsonrpc):
             notifier: Optional[Notifier] = None,
             outgoing: Optional[Outgoing] = None
     ) -> Dict[type, Any]:
+        # TODO Test Optional's
         return {
-            SanicRequest: sanic_request,
-            WebSocket: ws,
-            Sanic: self.app,
-            Request: incoming,
-            Notification: incoming or outgoing,
-            Incoming: incoming,
-            Notifier: notifier,
-            Outgoing: outgoing,
-            Response: outgoing,
+            SanicRequest: sanic_request, Sanic: self.app,
+            Request: incoming, Optional[Request]: incoming,
+            Incoming: incoming, Optional[Incoming]: incoming,
+            WebSocket: ws, Optional[WebSocket]: ws,
+            Notifier: notifier, Optional[Notifier]: notifier,
+            Response: outgoing, Optional[Response]: outgoing,
+            Notification: incoming or outgoing, Optional[Notification]: incoming or outgoing,
+            Outgoing: outgoing, Optional[Outgoing]: outgoing,
         }
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:

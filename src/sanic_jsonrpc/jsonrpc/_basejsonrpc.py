@@ -104,27 +104,38 @@ class BaseJsonrpc:
                 Objects.request if is_request else Objects.notification,
                 customs,
             )
-            traffic_logger.debug("--> %r", incoming)
-            ret = await route.call(incoming.params, customs)
-        except ResultError as err:
-            error_logger.error("%r failed: %s", incoming, err, exc_info=err)
-            error = INTERNAL_ERROR
-        except ArgError as err:
-            logger.debug("Invalid %r: %s", incoming, err)
-            error = INVALID_PARAMS
         except Error as err:
+            # TODO Test Error in incoming listener
             error = err
         except Exception as err:
-            error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+            # TODO Test Exception in incoming listener
+            error_logger.error("Listeners before %r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
-            if isinstance(ret, Error):
-                error = ret
+            traffic_logger.debug("--> %r", incoming)
+
+            try:
+                ret = await route.call(incoming.params, customs)
+            except ResultError as err:
+                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error = INTERNAL_ERROR
+            except ArgError as err:
+                logger.debug("Invalid %r: %s", incoming, err)
+                error = INVALID_PARAMS
+            except Error as err:
+                error = err
+            except Exception as err:
+                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error = INTERNAL_ERROR
             else:
-                result = ret
+                if isinstance(ret, Error):
+                    error = ret
+                else:
+                    result = ret
 
         if is_request:
-            response = customs[Response] = customs[Outgoing] = Response(result=result, error=error, id=incoming.id)
+            response = Response(result=result, error=error, id=incoming.id)
+            customs[Response] = customs[Outgoing] = customs[Optional[Response]] = customs[Optional[Outgoing]] = response
 
             try:
                 await self._run_listeners(
@@ -134,10 +145,13 @@ class BaseJsonrpc:
                     customs,
                 )
             except Error as err:
-                response = Response(result=response.result, error=err, id=response.id)
+                # TODO Test Error in outgoing listener
+                response.error = err
             except Exception as err:
+                # TODO Test Exception in outgoing listener
                 error_logger.error("Listeners after %r failed: %s", incoming, err, exc_info=err)
-                response = Response(result=response.result, error=INTERNAL_ERROR, id=response.id)
+                response.result = UNSET
+                response.error = INTERNAL_ERROR
 
             traffic_logger.debug("<-- %r", response)
             return response
@@ -178,14 +192,14 @@ class BaseJsonrpc:
         self._routes = {}
         self._calls = None
 
-    def listener(self, event: Union[Events, str], **annotations: type) -> Callable:
+    def listener(self, event: Union[Events, str], name: Optional[str] = None) -> Callable:
         if isinstance(event, str):
             event = Events[event]
 
         event = event.value
 
         def deco(func: Callable) -> Callable:
-            route = Route.from_inspect(func, None, annotations)
+            route = Route.from_inspect(func, name, {})
             route.result = None
             keys = {
                 (d, t, o)
