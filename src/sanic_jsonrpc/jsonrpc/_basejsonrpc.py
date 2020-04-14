@@ -1,4 +1,4 @@
-from asyncio import Future, Queue, ensure_future, shield, wait
+from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 
@@ -14,7 +14,6 @@ from ..types import AnyJsonrpc, Incoming, Outgoing
 
 __all__ = [
     'BaseJsonrpc',
-    'Events',
 ]
 
 
@@ -81,13 +80,10 @@ class BaseJsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    @staticmethod
-    async def _run_listener(route: Route, customs: Dict[type, Any]):
-        logger.debug("Calling listener %r", route.method)
-        await route.call([], customs)
-
-    def _make_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]) -> Future:
-        return ensure_future(wait([self._run_listener(r, customs) for r in self._listeners[(d, t, o)]]))
+    async def _run_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
+        for route in self._listeners[(d, t, o)]:
+            logger.debug("Calling listener %r", route.method)
+            await route.call([], customs)
 
     async def _call(
             self,
@@ -102,7 +98,7 @@ class BaseJsonrpc:
         result = UNSET
 
         try:
-            await self._make_listeners(
+            await self._run_listeners(
                 Directions.incoming,
                 transport,
                 Objects.request if is_request else Objects.notification,
@@ -131,7 +127,7 @@ class BaseJsonrpc:
             response = customs[Response] = customs[Outgoing] = Response(result=result, error=error, id=incoming.id)
 
             try:
-                await self._make_listeners(
+                await self._run_listeners(
                     Directions.outgoing,
                     transport,
                     Objects.response,
@@ -140,7 +136,7 @@ class BaseJsonrpc:
             except Error as err:
                 response = Response(result=response.result, error=err, id=response.id)
             except Exception as err:
-                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("Listeners after %r failed: %s", incoming, err, exc_info=err)
                 response = Response(result=response.result, error=INTERNAL_ERROR, id=response.id)
 
             traffic_logger.debug("<-- %r", response)

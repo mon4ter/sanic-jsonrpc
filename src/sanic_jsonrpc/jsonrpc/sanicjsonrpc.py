@@ -11,12 +11,13 @@ from websockets import WebSocketCommonProtocol as WebSocket
 from ._basejsonrpc import BaseJsonrpc
 from .._listening import Directions, Events, Objects, Transports
 from .._routing import Route
-from ..loggers import access_logger, logger, traffic_logger
+from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Notification, Request, Response
 from ..notifier import Notifier
 from ..types import Incoming, Outgoing
 
 __all__ = [
+    'Events',
     'Jsonrpc',
     'SanicJsonrpc',
 ]
@@ -83,22 +84,24 @@ class SanicJsonrpc(BaseJsonrpc):
         return HTTPResponse(body, 207, content_type=content_type)
 
     def _ws_outgoing(self, ws: WebSocket, outgoing: Outgoing) -> Future:
-        # TODO Fix double log for Response
-        traffic_logger.debug("<-- %r", outgoing)
         return ensure_future(ws.send(self._serialize(dict(outgoing))))
+
+    async def _ws_notification(self, ws: WebSocket, notification: Notification, customs: Dict[type, Any]):
+        try:
+            await self._run_listeners(Directions.outgoing, Transports.ws, Objects.notification, customs)
+        except Exception as err:
+            error_logger.error("Listeners after %r failed: %s", notification, err, exc_info=err)
+        else:
+            traffic_logger.debug("<-- %r", notification)
+            await self._ws_outgoing(ws, notification)
 
     async def _ws(self, sanic_request: SanicRequest, ws: WebSocket):
         recv = None
         pending = set()
 
-        def sender(outgoing: Outgoing) -> Future:
-            listeners = self._make_listeners(
-                Directions.outgoing,
-                Transports.ws,
-                Objects.notification,
-                self._customs(sanic_request, None, ws, notifier, outgoing)
-            )
-            return ensure_future(wait([listeners, self._ws_outgoing(ws, outgoing)]))
+        def sender(notification: Notification) -> Future:
+            customs = self._customs(sanic_request, None, ws, notifier, notification)
+            return ensure_future(self._ws_notification(ws, notification, customs))
 
         notifier = Notifier(ws, sender, self._finalise_future)
 
