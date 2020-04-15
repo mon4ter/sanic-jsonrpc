@@ -166,6 +166,7 @@ class BaseJsonrpc:
             else:
                 return fut.result()
         else:
+            # TODO Test cancel
             fut.cancel()
 
     async def _processing(self):

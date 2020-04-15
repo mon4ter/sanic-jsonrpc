@@ -89,6 +89,7 @@ class SanicJsonrpc(BaseJsonrpc):
         try:
             await self._run_listeners(Directions.outgoing, Transports.ws, Objects.notification, customs)
         except Exception as err:
+            # TODO Test Exception in listener
             error_logger.error("Listeners after %r failed: %s", notification, err, exc_info=err)
         else:
             traffic_logger.debug("<-- %r", notification)
