@@ -32,7 +32,6 @@ class SanicJsonrpc(BaseJsonrpc):
             notifier: Optional[Notifier] = None,
             outgoing: Optional[Outgoing] = None
     ) -> Dict[type, Any]:
-        # TODO Test Optional's
         return {
             SanicRequest: sanic_request, Sanic: self.app,
             Request: incoming, Optional[Request]: incoming,
