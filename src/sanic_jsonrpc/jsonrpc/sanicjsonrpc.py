@@ -187,13 +187,14 @@ class SanicJsonrpc(BaseJsonrpc):
         if access_log:
             @self.listener(Events.request)
             def set_time(req: Request, sanic_req: SanicRequest):
-                key = 'sanic-jsonrpc_time_{}'.format(req.id)
+                key = 'sanic_jsonrpc-time-{}'.format(req.id)
                 sanic_req[key] = monotonic()
 
             @self.listener(Events.response)
             def log_response(req: Request, res: Response, sanic_req: SanicRequest):
-                key = 'sanic-jsonrpc_time_{}'.format(req.id)
-                start = sanic_req.pop(key)
+                key = 'sanic_jsonrpc-time-{}'.format(req.id)
+                start = sanic_req[key]
+                del sanic_req[key]
                 access_logger.info("", extra={
                     'method': req.method,
                     'id': req.id,
