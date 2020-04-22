@@ -72,7 +72,7 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
         'outgoing-outgoing_ws_response-str'
     ], 'id': 1}
 )])
-async def test_wst(caplog, test_cli, in_: dict, out: dict):
+async def test_ws(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     ws = await test_cli.ws_connect('/ws')
     await ws.send_json(in_)

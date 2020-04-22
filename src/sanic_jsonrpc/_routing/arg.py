@@ -20,6 +20,20 @@ class Arg:
         self.is_positional = is_positional
         self.is_zipped = is_zipped
 
+    def __repr__(self) -> str:
+        return '{}({}{}: {}{})'.format(
+            self.__class__.__name__,
+            {
+                (True, True): '*',
+                (True, False): '',
+                (False, True): '**',
+                (False, False): '*, ',
+            }[self.is_positional, self.is_zipped],
+            self.name,
+            self.type,
+            '' if self.default is UNSET else ' = {!r}'.format(self.default),
+        )
+
     def validate(self, value: Any) -> Any:
         if value is UNSET:
             if self.default is UNSET:
