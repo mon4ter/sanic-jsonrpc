@@ -1,7 +1,6 @@
 from asyncio import iscoroutine
 from inspect import Parameter, Signature, signature
-from itertools import zip_longest
-from typing import Any, Callable, Dict, Iterable, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 from fashionable import UNSET
 
@@ -11,10 +10,6 @@ __all__ = [
     'ResultError',
     'Route',
 ]
-
-
-def _zip_right(*iterables: Iterable, fillvalue: Any = None) -> Iterable:
-    return reversed(tuple(zip_longest(*map(reversed, iterables), fillvalue=fillvalue)))
 
 
 class Route:
