@@ -1,7 +1,7 @@
 from asyncio import iscoroutine
-from inspect import getfullargspec
-from itertools import chain, zip_longest
-from typing import Any, Callable, Dict, Optional, Tuple, Iterable
+from inspect import Parameter, Signature, signature
+from itertools import zip_longest
+from typing import Any, Callable, Dict, Iterable, Optional, Tuple
 
 from fashionable import UNSET
 
@@ -20,25 +20,26 @@ def _zip_right(*iterables: Iterable, fillvalue: Any = None) -> Iterable:
 class Route:
     __slots__ = ('func', 'method', 'args', 'result')
 
+    _POSITIONAL_KINDS = {Parameter.POSITIONAL_ONLY, Parameter.POSITIONAL_OR_KEYWORD, Parameter.VAR_POSITIONAL}
+    _ZIPPED_KINDS = {Parameter.VAR_POSITIONAL, Parameter.VAR_KEYWORD}
+
     @classmethod
     def from_inspect(cls, func: Callable, method: Optional[str], annotations: Dict[str, type]) -> 'Route':
         if not method:
             method = func.__name__
 
-        spec = getfullargspec(func)
-        kwonlydefaults = spec.kwonlydefaults or {}
+        sign = signature(func)
 
-        args = tuple(
-            Arg(name, annotations.get(name, spec.annotations.get(name, Any)), default, is_positional, is_zipped)
-            for name, default, is_positional, is_zipped in chain(
-                ((n, d, True, False) for n, d in _zip_right(spec.args, spec.defaults or (), fillvalue=UNSET)),
-                ((n, d, False, False) for n, d in ((a, kwonlydefaults.get(a, UNSET)) for a in spec.kwonlyargs)),
-                ((spec.varargs, UNSET, True, True),) if spec.varargs else (),
-                ((spec.varkw, UNSET, False, True),) if spec.varkw else (),
-            )
-        )
+        args = tuple(Arg(
+            parameter.name,
+            Any if parameter.annotation is Parameter.empty else parameter.annotation,
+            UNSET if parameter.default is Parameter.empty else parameter.default,
+            parameter.kind in cls._POSITIONAL_KINDS,
+            parameter.kind in cls._ZIPPED_KINDS
+        ) for parameter in sign.parameters.values())
 
-        result_type = annotations.get('result', spec.annotations.get('return'))
+        return_annotation = sign.return_annotation
+        result_type = annotations.get('result', Any if return_annotation is Signature.empty else return_annotation)
         result = Arg('result', result_type, UNSET, False, False) if result_type else None
 
         return cls(func, method, args, result)
