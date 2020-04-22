@@ -50,8 +50,8 @@ class Route:
         self.result = result
 
     def _validate(self, params: Any, customs: Dict[type, Any]) -> Tuple[list, dict]:
-        list_params = None
-        dict_params = None
+        list_params = []
+        dict_params = {}
 
         if isinstance(params, list):
             list_params = params.copy()
@@ -66,14 +66,13 @@ class Route:
 
         for arg in self.args:
             if arg.is_zipped:
-                if dict_params:
-                    for param_name, param_value in dict_params.items():
-                        kwargs[param_name] = arg.validate(param_value)
-                        recover_allowed = False
-                else:
-                    for param_value in list_params:
-                        args.append(arg.validate(param_value))
-                        recover_allowed = False
+                for param_name in list(dict_params):
+                    kwargs[param_name] = arg.validate(dict_params.pop(param_name))
+                    recover_allowed = False
+
+                while list_params:
+                    args.append(arg.validate(list_params.pop(0)))
+                    recover_allowed = False
 
                 continue
 
