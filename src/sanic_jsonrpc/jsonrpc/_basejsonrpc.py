@@ -105,10 +105,8 @@ class BaseJsonrpc:
                 customs,
             )
         except Error as err:
-            # TODO Test Error in incoming listener
             error = err
         except Exception as err:
-            # TODO Test Exception in incoming listener
             error_logger.error("Listeners before %r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
@@ -145,10 +143,9 @@ class BaseJsonrpc:
                     customs,
                 )
             except Error as err:
-                # TODO Test Error in outgoing listener
+                response.result = UNSET
                 response.error = err
             except Exception as err:
-                # TODO Test Exception in outgoing listener
                 error_logger.error("Listeners after %r failed: %s", incoming, err, exc_info=err)
                 response.result = UNSET
                 response.error = INTERNAL_ERROR

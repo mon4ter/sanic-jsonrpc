@@ -8,7 +8,7 @@ from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 
-from sanic_jsonrpc import Events, Incoming, Notification, Notifier, Outgoing, Response, SanicJsonrpc
+from sanic_jsonrpc import Error, Events, Incoming, Notification, Notifier, Outgoing, Request, Response, SanicJsonrpc
 
 
 def lists_equal_unordered(self: list, other: list) -> bool:
@@ -26,7 +26,7 @@ def app():
             if incoming and incoming.method == 'all_listeners':
                 incoming.params.append('incoming-' + name)
 
-            if isinstance(outgoing, Response) and 'all_listeners' in outgoing.result:
+            if isinstance(outgoing, Response) and isinstance(outgoing.result, list) and 'all_listeners' in outgoing.result:
                 outgoing.result.append('outgoing-' + name)
             elif isinstance(outgoing, Notification) and outgoing.method == 'all_listeners_callback':
                 outgoing.params.append('outgoing-' + name)
@@ -43,14 +43,49 @@ def app():
         return [*params, 'all_listeners']
 
     @jsonrpc.listener(Events.notification)
-    async def outgoing_listener_exception_listener(notification: Notification):
-        if notification.method == 'outgoing_listener_exception_callback':
-            raise Exception('outgoing_listener_exception_listener')
+    async def notification_listener_exception_listener(notification: Notification):
+        if notification.method == 'notification_listener_exception_callback':
+            raise Exception('notification_listener_exception_listener')
 
     @jsonrpc.ws
-    def outgoing_listener_exception(notifier: Notifier) -> list:
-        notifier.send(Notification('outgoing_listener_exception_callback', None))
-        return []
+    def notification_listener_exception(notifier: Notifier):
+        notifier.send(Notification('notification_listener_exception_callback', None))
+
+    @jsonrpc.listener(Events.incoming)
+    async def incoming_listener_error_listener(request: Request):
+        if request.method == 'incoming_listener_error':
+            raise Error(1234, 'incoming_listener_error_listener')
+
+    @jsonrpc
+    def incoming_listener_error():
+        pass
+
+    @jsonrpc.listener(Events.incoming)
+    async def incoming_listener_exception_listener(request: Request):
+        if request.method == 'incoming_listener_exception':
+            raise Exception('incoming_listener_exception_listener')
+
+    @jsonrpc
+    def incoming_listener_exception():
+        pass
+
+    @jsonrpc.listener(Events.outgoing)
+    async def outgoing_listener_error_listener(request: Optional[Request]):
+        if request and request.method == 'outgoing_listener_error':
+            raise Error(5678, 'outgoing_listener_error_listener')
+
+    @jsonrpc
+    def outgoing_listener_error():
+        pass
+
+    @jsonrpc.listener(Events.outgoing)
+    async def outgoing_listener_exception_listener(request: Optional[Request]):
+        if request and request.method == 'outgoing_listener_exception':
+            raise Exception('outgoing_listener_exception_listener')
+
+    @jsonrpc
+    def outgoing_listener_exception():
+        pass
 
     return app_
 
@@ -72,6 +107,18 @@ def test_cli(loop, app, sanic_client):
         'outgoing-outgoing_response', 'outgoing-outgoing_response-str', 'outgoing-outgoing_post_response',
         'outgoing-outgoing_post_response-str'
     ], 'id': 1}
+), (
+    {'jsonrpc': '2.0', 'method': 'incoming_listener_error', 'id': 2},
+    {'jsonrpc': '2.0', 'error': {'code': 1234, 'message': 'incoming_listener_error_listener'}, 'id': 2}
+), (
+    {'jsonrpc': '2.0', 'method': 'incoming_listener_exception', 'id': 3},
+    {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 3}
+), (
+    {'jsonrpc': '2.0', 'method': 'outgoing_listener_error', 'id': 4},
+    {'jsonrpc': '2.0', 'error': {'code': 5678, 'message': 'outgoing_listener_error_listener'}, 'id': 4}
+), (
+    {'jsonrpc': '2.0', 'method': 'outgoing_listener_exception', 'id': 5},
+    {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 5}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
@@ -104,11 +151,20 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
 
     ]
 ), (
-    [
-        {'jsonrpc': '2.0', 'method': 'outgoing_listener_exception', 'params': [], 'id': 2},
-    ], [
-        {'jsonrpc': '2.0', 'result': [], 'id': 2},
-    ]
+    [{'jsonrpc': '2.0', 'method': 'notification_listener_exception', 'id': 2}],
+    [{'jsonrpc': '2.0', 'result': None, 'id': 2}]
+), (
+    [{'jsonrpc': '2.0', 'method': 'incoming_listener_error', 'id': 3}],
+    [{'jsonrpc': '2.0', 'error': {'code': 1234, 'message': 'incoming_listener_error_listener'}, 'id': 3}]
+), (
+    [{'jsonrpc': '2.0', 'method': 'incoming_listener_exception', 'id': 4}],
+    [{'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 4}]
+), (
+    [{'jsonrpc': '2.0', 'method': 'outgoing_listener_error', 'id': 5}],
+    [{'jsonrpc': '2.0', 'error': {'code': 5678, 'message': 'outgoing_listener_error_listener'}, 'id': 5}]
+), (
+    [{'jsonrpc': '2.0', 'method': 'outgoing_listener_exception', 'id': 6}],
+    [{'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 6}]
 )])
 async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):
     caplog.set_level(DEBUG)
