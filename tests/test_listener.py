@@ -1,11 +1,18 @@
+from asyncio import TimeoutError
+from functools import partial
 from logging import DEBUG
+from operator import contains
 from typing import List, Optional
 
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 
-from sanic_jsonrpc import Events, Incoming, Outgoing, Response, SanicJsonrpc
+from sanic_jsonrpc import Events, Incoming, Notification, Notifier, Outgoing, Response, SanicJsonrpc
+
+
+def lists_equal_unordered(self: list, other: list) -> bool:
+    return all(map(partial(contains, other), self)) and all(map(partial(contains, self), other))
 
 
 @fixture
@@ -16,19 +23,34 @@ def app():
     def make_fun(name, value):
         @jsonrpc.listener(value, name)
         def fun(incoming: Optional[Incoming], outgoing: Optional[Outgoing]):
-            if incoming:
+            if incoming and incoming.method == 'all_listeners':
                 incoming.params.append('incoming-' + name)
 
-            if outgoing:
-                (outgoing.result if isinstance(outgoing, Response) else outgoing.params).append('outgoing-' + name)
+            if isinstance(outgoing, Response) and 'all_listeners' in outgoing.result:
+                outgoing.result.append('outgoing-' + name)
+            elif isinstance(outgoing, Notification) and outgoing.method == 'all_listeners_callback':
+                outgoing.params.append('outgoing-' + name)
 
     for event in Events:
         make_fun(event.name, event)
         make_fun(event.name + '-str', event.name)
 
     @jsonrpc
-    def method(*params: str) -> List[str]:
-        return [*params, 'method']
+    def all_listeners(*params: str, notifier: Optional[Notifier]) -> List[str]:
+        if notifier:
+            notifier.send(Notification('all_listeners_callback', []))
+
+        return [*params, 'all_listeners']
+
+    @jsonrpc.listener(Events.notification)
+    async def outgoing_listener_exception_listener(notification: Notification):
+        if notification.method == 'outgoing_listener_exception_callback':
+            raise Exception('outgoing_listener_exception_listener')
+
+    @jsonrpc.ws
+    def outgoing_listener_exception(notifier: Notifier) -> list:
+        notifier.send(Notification('outgoing_listener_exception_callback', None))
+        return []
 
     return app_
 
@@ -39,12 +61,12 @@ def test_cli(loop, app, sanic_client):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'method', 'params': [], 'id': 1},
+    {'jsonrpc': '2.0', 'method': 'all_listeners', 'params': [], 'id': 1},
     {'jsonrpc': '2.0', 'result': [
         'incoming-all', 'incoming-all-str', 'incoming-incoming', 'incoming-incoming-str', 'incoming-post',
         'incoming-post-str', 'incoming-request', 'incoming-request-str', 'incoming-incoming_post',
         'incoming-incoming_post-str', 'incoming-incoming_request', 'incoming-incoming_request-str',
-        'incoming-incoming_post_request', 'incoming-incoming_post_request-str', 'method', 'outgoing-all',
+        'incoming-incoming_post_request', 'incoming-incoming_post_request-str', 'all_listeners', 'outgoing-all',
         'outgoing-all-str', 'outgoing-outgoing', 'outgoing-outgoing-str', 'outgoing-post', 'outgoing-post-str',
         'outgoing-response', 'outgoing-response-str', 'outgoing-outgoing_post', 'outgoing-outgoing_post-str',
         'outgoing-outgoing_response', 'outgoing-outgoing_response-str', 'outgoing-outgoing_post_response',
@@ -60,24 +82,52 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
 
 
 @mark.parametrize('in_,out', [(
-    {'jsonrpc': '2.0', 'method': 'method', 'params': [], 'id': 1},
-    {'jsonrpc': '2.0', 'result': [
-        'incoming-all', 'incoming-all-str', 'incoming-incoming', 'incoming-incoming-str', 'incoming-ws',
-        'incoming-ws-str', 'incoming-request', 'incoming-request-str', 'incoming-incoming_ws',
-        'incoming-incoming_ws-str', 'incoming-incoming_request', 'incoming-incoming_request-str',
-        'incoming-incoming_ws_request', 'incoming-incoming_ws_request-str', 'method', 'outgoing-all',
-        'outgoing-all-str', 'outgoing-outgoing', 'outgoing-outgoing-str', 'outgoing-ws', 'outgoing-ws-str',
-        'outgoing-response', 'outgoing-response-str', 'outgoing-outgoing_ws', 'outgoing-outgoing_ws-str',
-        'outgoing-outgoing_response', 'outgoing-outgoing_response-str', 'outgoing-outgoing_ws_response',
-        'outgoing-outgoing_ws_response-str'
-    ], 'id': 1}
+    [
+        {'jsonrpc': '2.0', 'method': 'all_listeners', 'params': [], 'id': 1},
+    ], [
+        {'jsonrpc': '2.0', 'result': [
+            'incoming-all', 'incoming-all-str', 'incoming-incoming', 'incoming-incoming-str', 'incoming-ws',
+            'incoming-ws-str', 'incoming-request', 'incoming-request-str', 'incoming-incoming_ws',
+            'incoming-incoming_ws-str', 'incoming-incoming_request', 'incoming-incoming_request-str',
+            'incoming-incoming_ws_request', 'incoming-incoming_ws_request-str', 'all_listeners', 'outgoing-all',
+            'outgoing-all-str', 'outgoing-outgoing', 'outgoing-outgoing-str', 'outgoing-ws', 'outgoing-ws-str',
+            'outgoing-response', 'outgoing-response-str', 'outgoing-outgoing_ws', 'outgoing-outgoing_ws-str',
+            'outgoing-outgoing_response', 'outgoing-outgoing_response-str', 'outgoing-outgoing_ws_response',
+            'outgoing-outgoing_ws_response-str'
+        ], 'id': 1},
+        {'jsonrpc': '2.0', 'method': 'all_listeners_callback', 'params': [
+            'outgoing-all', 'outgoing-all-str', 'outgoing-outgoing', 'outgoing-outgoing-str', 'outgoing-ws',
+            'outgoing-ws-str', 'outgoing-notification', 'outgoing-notification-str', 'outgoing-outgoing_ws',
+            'outgoing-outgoing_ws-str', 'outgoing-outgoing_notification', 'outgoing-outgoing_notification-str',
+            'outgoing-outgoing_ws_notification', 'outgoing-outgoing_ws_notification-str'
+        ]}
+
+    ]
+), (
+    [
+        {'jsonrpc': '2.0', 'method': 'outgoing_listener_exception', 'params': [], 'id': 2},
+    ], [
+        {'jsonrpc': '2.0', 'result': [], 'id': 2},
+    ]
 )])
-async def test_ws(caplog, test_cli, in_: dict, out: dict):
+async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):
     caplog.set_level(DEBUG)
     ws = await test_cli.ws_connect('/ws')
-    await ws.send_json(in_)
-    data = await ws.receive_json(timeout=0.01)
+
+    for data in in_:
+        await ws.send_json(data)
+
+    left = []
+
+    while True:
+        try:
+            left.append(await ws.receive_json(timeout=0.05))
+        except TimeoutError:
+            break
+
     await ws.close()
     await test_cli.close()
 
-    assert data == out
+    right = out
+
+    assert lists_equal_unordered(left, right)
