@@ -299,16 +299,16 @@ def test_cli(loop, app, sanic_client):
     {'jsonrpc': '2.0', 'result': True, 'id': 26}
 ), (
     {'jsonrpc': '2.0', 'method': 'notification_positional', 'id': 27},
-    {'jsonrpc': '2.0', 'result': True, 'id': 27}
+    {'jsonrpc': '2.0', 'result': False, 'id': 27}
 ), (
     {'jsonrpc': '2.0', 'method': 'notification_keyword', 'id': 28},
-    {'jsonrpc': '2.0', 'result': True, 'id': 28}
+    {'jsonrpc': '2.0', 'result': False, 'id': 28}
 ), (
     {'jsonrpc': '2.0', 'method': 'optional_notification_positional', 'id': 29},
-    {'jsonrpc': '2.0', 'result': True, 'id': 29}
+    {'jsonrpc': '2.0', 'result': False, 'id': 29}
 ), (
     {'jsonrpc': '2.0', 'method': 'optional_notification_keyword', 'id': 30},
-    {'jsonrpc': '2.0', 'result': True, 'id': 30}
+    {'jsonrpc': '2.0', 'result': False, 'id': 30}
 ), (
     {'jsonrpc': '2.0', 'method': 'vararg', 'params': ['1', '2', '3'], 'id': 31},
     {'jsonrpc': '2.0', 'result': 6, 'id': 31}

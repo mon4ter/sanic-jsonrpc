@@ -9,7 +9,7 @@ from sanic.response import HTTPResponse
 from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
-from .._listening import Directions, Events, Objects, Transports
+from .._middleware import Directions, Objects, Predicates, Transports
 from .._routing import Route
 from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Notification, Request, Response
@@ -17,30 +17,32 @@ from ..notifier import Notifier
 from ..types import Incoming, Outgoing
 
 __all__ = [
-    'Events',
     'Jsonrpc',
+    'Predicates',
     'SanicJsonrpc',
 ]
 
 
 class SanicJsonrpc(BaseJsonrpc):
+    # TODO Refactor customs
     def _customs(
             self,
             sanic_request: SanicRequest,
-            incoming: Optional[Incoming] = None,
+            request: Optional[Request] = None,
+            notification: Optional[Notification] = None,
+            response: Optional[Response] = None,
             ws: Optional[WebSocket] = None,
             notifier: Optional[Notifier] = None,
-            outgoing: Optional[Outgoing] = None
     ) -> Dict[type, Any]:
         return {
             SanicRequest: sanic_request, Sanic: self.app,
-            Request: incoming, Optional[Request]: incoming,
-            Incoming: incoming, Optional[Incoming]: incoming,
+            Request: request, Optional[Request]: request,
+            Response: response, Optional[Response]: response,
+            Notification: notification, Optional[Notification]: notification,
             WebSocket: ws, Optional[WebSocket]: ws,
             Notifier: notifier, Optional[Notifier]: notifier,
-            Response: outgoing, Optional[Response]: outgoing,
-            Notification: incoming or outgoing, Optional[Notification]: incoming or outgoing,
-            Outgoing: outgoing, Optional[Outgoing]: outgoing,
+            Incoming: request or notification, Optional[Incoming]: request or notification,
+            Outgoing: response or notification, Optional[Outgoing]: response or notification,
         }
 
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
@@ -69,9 +71,15 @@ class SanicJsonrpc(BaseJsonrpc):
 
                 continue
 
-            fut = self._register_call(incoming, route, self._customs(sanic_request, incoming), is_post=True)
+            is_request = isinstance(incoming, Request)
 
-            if isinstance(incoming, Request):
+            fut = self._register_call(incoming, route, self._customs(
+                sanic_request,
+                incoming if is_request else None,
+                None if is_request else incoming
+            ), is_post=True)
+
+            if is_request:
                 futures.append(fut)
 
         for response in await gather(*futures):
@@ -86,9 +94,9 @@ class SanicJsonrpc(BaseJsonrpc):
 
     async def _ws_notification(self, ws: WebSocket, notification: Notification, customs: Dict[type, Any]):
         try:
-            await self._run_listeners(Directions.outgoing, Transports.ws, Objects.notification, customs)
+            await self._run_middlewares(Directions.outgoing, Transports.ws, Objects.notification, customs)
         except Exception as err:
-            error_logger.error("Listeners after %r failed: %s", notification, err, exc_info=err)
+            error_logger.error("Middlewares after outgoing %r failed: %s", notification, err, exc_info=err)
         else:
             traffic_logger.debug("<-- %r", notification)
             await self._ws_outgoing(ws, notification)
@@ -98,7 +106,7 @@ class SanicJsonrpc(BaseJsonrpc):
         pending = set()
 
         def sender(notification: Notification) -> Future:
-            customs = self._customs(sanic_request, None, ws, notifier, notification)
+            customs = self._customs(sanic_request, None, notification, None, ws, notifier)
             return ensure_future(self._ws_notification(ws, notification, customs))
 
         notifier = Notifier(ws, sender, self._finalise_future)
@@ -148,14 +156,18 @@ class SanicJsonrpc(BaseJsonrpc):
 
                     continue
 
-                fut = self._register_call(
-                    incoming,
-                    route,
-                    self._customs(sanic_request, incoming, ws, notifier),
-                    is_post=False,
-                )
+                is_request = isinstance(incoming, Request)
 
-                if isinstance(incoming, Request):
+                fut = self._register_call(incoming, route, self._customs(
+                    sanic_request,
+                    incoming if is_request else None,
+                    None if is_request else incoming,
+                    None,
+                    ws,
+                    notifier
+                ), is_post=False)
+
+                if is_request:
                     pending.add(fut)
 
         notifier.cancel()
@@ -184,12 +196,12 @@ class SanicJsonrpc(BaseJsonrpc):
             self.app.add_websocket_route(self._ws, ws_route)
 
         if access_log:
-            @self.listener(Events.request)
+            @self.middleware(Predicates.request)
             def set_time(req: Request, sanic_req: SanicRequest):
                 key = 'sanic_jsonrpc-time-{}'.format(req.id)
                 sanic_req[key] = monotonic()
 
-            @self.listener(Events.response)
+            @self.middleware(Predicates.response)
             def log_response(req: Request, res: Response, sanic_req: SanicRequest):
                 key = 'sanic_jsonrpc-time-{}'.format(req.id)
                 start = sanic_req[key]

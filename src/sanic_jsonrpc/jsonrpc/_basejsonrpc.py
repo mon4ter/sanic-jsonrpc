@@ -5,7 +5,7 @@ from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
 
-from .._listening import Directions, Events, Objects, Transports
+from .._middleware import Directions, Objects, Predicates, Transports
 from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
@@ -80,9 +80,9 @@ class BaseJsonrpc:
         self._calls.put_nowait(fut)
         return fut
 
-    async def _run_listeners(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
-        for route in self._listeners[(d, t, o)]:
-            logger.debug("Calling listener %r", route.method)
+    async def _run_middlewares(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
+        for route in self._middlewares[(d, t, o)]:
+            logger.debug("Calling middleware %r", route.method)
             await route.call([], customs)
 
     async def _call(
@@ -98,7 +98,7 @@ class BaseJsonrpc:
         result = UNSET
 
         try:
-            await self._run_listeners(
+            await self._run_middlewares(
                 Directions.incoming,
                 transport,
                 Objects.request if is_request else Objects.notification,
@@ -107,7 +107,7 @@ class BaseJsonrpc:
         except Error as err:
             error = err
         except Exception as err:
-            error_logger.error("Listeners before %r failed: %s", incoming, err, exc_info=err)
+            error_logger.error("Middlewares before incoming %r failed: %s", incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
             traffic_logger.debug("--> %r", incoming)
@@ -136,7 +136,7 @@ class BaseJsonrpc:
             customs[Response] = customs[Outgoing] = customs[Optional[Response]] = customs[Optional[Outgoing]] = response
 
             try:
-                await self._run_listeners(
+                await self._run_middlewares(
                     Directions.outgoing,
                     transport,
                     Objects.response,
@@ -146,7 +146,7 @@ class BaseJsonrpc:
                 response.result = UNSET
                 response.error = err
             except Exception as err:
-                error_logger.error("Listeners after %r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("Middlewares after %r failed: %s", incoming, err, exc_info=err)
                 response.result = UNSET
                 response.error = INTERNAL_ERROR
 
@@ -185,28 +185,28 @@ class BaseJsonrpc:
             await calls.get_nowait()
 
     def __init__(self):
-        self._listeners = defaultdict(list)
+        self._middlewares = defaultdict(list)
         self._routes = {}
         self._calls = None
 
-    def listener(self, event: Union[Events, str], name: Optional[str] = None) -> Callable:
-        if isinstance(event, str):
-            event = Events[event]
+    def middleware(self, predicate: Union[Predicates, str], name: Optional[str] = None) -> Callable:
+        if isinstance(predicate, str):
+            predicate = Predicates[predicate]
 
-        event = event.value
+        predicate = predicate.value
 
         def deco(func: Callable) -> Callable:
             route = Route.from_inspect(func, name, {})
             route.result = None
             keys = {
                 (d, t, o)
-                for d in event.directions
-                for t in event.transports
-                for o in event.objects
+                for d in predicate.directions
+                for t in predicate.transports
+                for o in predicate.objects
             }
 
             for key in keys:
-                self._listeners[key].append(route)
+                self._middlewares[key].append(route)
 
             return func
         return deco

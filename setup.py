@@ -13,7 +13,7 @@ setup(
     version=version,
     packages=[
         'sanic_jsonrpc',
-        'sanic_jsonrpc._listening',
+        'sanic_jsonrpc._middleware',
         'sanic_jsonrpc._routing',
         'sanic_jsonrpc.jsonrpc',
         'sanic_jsonrpc.models',

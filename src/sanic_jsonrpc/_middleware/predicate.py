@@ -5,11 +5,11 @@ from .objects import Objects
 from .transports import Transports
 
 __all__ = [
-    'Event',
+    'Predicate',
 ]
 
 
-class Event:
+class Predicate:
     __slots__ = ('directions', 'transports', 'objects')
 
     def __init__(self, directions: Set[Directions], transports: Set[Transports], objects: Set[Objects]):
