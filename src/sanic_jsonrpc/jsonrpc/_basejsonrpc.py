@@ -190,6 +190,9 @@ class BaseJsonrpc:
         self._calls = None
 
     def middleware(self, predicate: Union[Predicates, str], name: Optional[str] = None) -> Callable:
+        if isinstance(predicate, Callable):
+            return self.middleware(Predicates.any)(predicate)
+
         if isinstance(predicate, str):
             predicate = Predicates[predicate]
 

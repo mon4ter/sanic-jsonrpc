@@ -20,9 +20,9 @@ def app():
     app_ = Sanic('sanic-jsonrpc')
     jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
 
-    def make_fun(name, value):
+    def make_middleware(name, value):
         @jsonrpc.middleware(value, name)
-        def fun(request: Optional[Request], response: Optional[Response], notification: Optional[Notification]):
+        def middleware(request: Optional[Request], response: Optional[Response], notification: Optional[Notification]):
             if request and request.method == 'all_predicates':
                 request.params.append(name)
 
@@ -32,9 +32,9 @@ def app():
             if notification and notification.method == 'all_predicates_callback':
                 notification.params.append(name)
 
-    for event in Predicates:
-        make_fun(event.name, event)
-        make_fun(event.name, event.name)
+    for predicate in Predicates:
+        make_middleware(predicate.name, predicate)
+        make_middleware(predicate.name, predicate.name)
 
     @jsonrpc
     def all_predicates(*params: str, notifier: Optional[Notifier]) -> List[str]:
@@ -44,7 +44,7 @@ def app():
         return [*params, 'all_predicates']
 
     @jsonrpc.middleware(Predicates.notification)
-    async def notification_middleware_exception_middleware(notification: Notification):
+    def notification_middleware_exception_middleware(notification: Notification):
         if notification.method == 'notification_middleware_exception_callback':
             raise Exception('notification_middleware_exception_middleware')
 
@@ -53,7 +53,7 @@ def app():
         notifier.send(Notification('notification_middleware_exception_callback', None))
 
     @jsonrpc.middleware(Predicates.incoming)
-    async def incoming_middleware_error_middleware(request: Request):
+    def incoming_middleware_error_middleware(request: Request):
         if request.method == 'incoming_middleware_error':
             raise Error(1234, 'incoming_middleware_error_middleware')
 
@@ -62,7 +62,7 @@ def app():
         pass
 
     @jsonrpc.middleware(Predicates.incoming)
-    async def incoming_middleware_exception_middleware(request: Request):
+    def incoming_middleware_exception_middleware(request: Request):
         if request.method == 'incoming_middleware_exception':
             raise Exception('incoming_middleware_exception_middleware')
 
@@ -71,7 +71,7 @@ def app():
         pass
 
     @jsonrpc.middleware(Predicates.outgoing)
-    async def outgoing_middleware_error_middleware(request: Optional[Request]):
+    def outgoing_middleware_error_middleware(request: Optional[Request]):
         if request and request.method == 'outgoing_middleware_error':
             raise Error(5678, 'outgoing_middleware_error_middleware')
 
@@ -80,13 +80,35 @@ def app():
         pass
 
     @jsonrpc.middleware(Predicates.outgoing)
-    async def outgoing_middleware_exception_middleware(request: Optional[Request]):
+    def outgoing_middleware_exception_middleware(request: Optional[Request]):
         if request and request.method == 'outgoing_middleware_exception':
             raise Exception('outgoing_middleware_exception_middleware')
 
     @jsonrpc
     def outgoing_middleware_exception():
         pass
+
+    @jsonrpc.middleware
+    def no_predicate_middleware(
+            request: Optional[Request],
+            response: Optional[Response],
+            notification: Optional[Notification],
+    ):
+        if request and request.method == 'no_predicate':
+            request.params.append('no_predicate_middleware')
+
+        if response and isinstance(response.result, list) and 'no_predicate' in response.result:
+            response.result.append('no_predicate_middleware')
+
+        if notification and notification.method == 'no_predicate_callback':
+            notification.params.append('no_predicate_middleware')
+
+    @jsonrpc
+    def no_predicate(*params: str, notifier: Optional[Notifier]) -> List[str]:
+        if notifier:
+            notifier.send(Notification('no_predicate_callback', []))
+
+        return [*params, 'no_predicate']
 
     return app_
 
@@ -117,6 +139,9 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'outgoing_middleware_exception', 'id': 5},
     {'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 5}
+), (
+    {'jsonrpc': '2.0', 'method': 'no_predicate', 'params': [], 'id': 6},
+    {'jsonrpc': '2.0', 'result': ['no_predicate_middleware', 'no_predicate', 'no_predicate_middleware'], 'id': 6}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
@@ -159,6 +184,14 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
 ), (
     [{'jsonrpc': '2.0', 'method': 'outgoing_middleware_exception', 'id': 6}],
     [{'jsonrpc': '2.0', 'error': {'code': -32603, 'message': 'Internal error'}, 'id': 6}]
+), (
+    [
+        {'jsonrpc': '2.0', 'method': 'no_predicate', 'params': [], 'id': 7}
+    ],
+    [
+        {'jsonrpc': '2.0', 'result': ['no_predicate_middleware', 'no_predicate', 'no_predicate_middleware'], 'id': 7},
+        {'jsonrpc': '2.0', 'method': 'no_predicate_callback', 'params': ['no_predicate_middleware']}
+    ]
 )])
 async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):
     caplog.set_level(DEBUG)
