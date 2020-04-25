@@ -1,16 +1,17 @@
 from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
+from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
 
-from .._middleware import Directions, Objects, Predicates, Transports
+from .._context import Context
+from .._middleware import Objects, Predicates
 from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
-from ..types import AnyJsonrpc, Incoming, Outgoing
+from ..types import AnyJsonrpc
 
 __all__ = [
     'BaseJsonrpc',
@@ -65,49 +66,42 @@ class BaseJsonrpc:
 
         return self._serialize([dict(r) for r in responses])
 
-    def _register_call(self, *args, **kwargs) -> Future:
-        fut = shield(self._call(*args, **kwargs))
+    def _register_call(self, call: Callable[[], Coroutine], ctx: Context) -> Future:
+        fut = shield(self._call(call, ctx))
         self._calls.put_nowait(fut)
         return fut
 
-    async def _run_middlewares(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
-        for route in self._middlewares[(d, t, o)]:
+    async def _run_middlewares(self, ctx: Context):
+        for route in self._middlewares[(ctx.direction, ctx.transport, ctx.object)]:
             logger.debug("Calling middleware %r", route.method)
-            await route.call([], customs)
+            await route.call([], ctx.dict)
 
-    async def _call(
-            self,
-            incoming: Incoming,
-            route: Route,
-            customs: Dict[type, Any],
-            t: Transports,
-            o: Objects,
-    ) -> Optional[Response]:
+    async def _call(self, call: Callable[[], Coroutine], ctx: Context) -> Optional[Response]:
         error = UNSET
         result = UNSET
 
         try:
-            await self._run_middlewares(Directions.incoming, t, o, customs)
+            await self._run_middlewares(ctx)
         except Error as err:
             error = err
         except Exception as err:
-            error_logger.error("Middlewares before incoming %r failed: %s", incoming, err, exc_info=err)
+            error_logger.error("Middlewares before incoming %r failed: %s", ctx.incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
-            traffic_logger.debug("--> %r", incoming)
+            traffic_logger.debug("--> %r", ctx.incoming)
 
             try:
-                ret = await route.call(incoming.params, customs)
+                ret = await call()
             except ResultError as err:
-                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
                 error = INTERNAL_ERROR
             except ArgError as err:
-                logger.debug("Invalid %r: %s", incoming, err)
+                logger.debug("Invalid %r: %s", ctx.incoming, err)
                 error = INVALID_PARAMS
             except Error as err:
                 error = err
             except Exception as err:
-                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
                 error = INTERNAL_ERROR
             else:
                 if isinstance(ret, Error):
@@ -115,17 +109,17 @@ class BaseJsonrpc:
                 else:
                     result = ret
 
-        if o is Objects.request:
-            response = Response(result=result, error=error, id=incoming.id)
-            customs[Response] = customs[Outgoing] = customs[Optional[Response]] = customs[Optional[Outgoing]] = response
+        if ctx.object is Objects.request:
+            response = Response(result=result, error=error, id=ctx.incoming.id)
+            ctx = ctx(response)
 
             try:
-                await self._run_middlewares(Directions.outgoing, t, Objects.response, customs)
+                await self._run_middlewares(ctx)
             except Error as err:
                 response.result = UNSET
                 response.error = err
             except Exception as err:
-                error_logger.error("Middlewares after %r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("Middlewares after %r failed: %s", ctx.incoming, err, exc_info=err)
                 response.result = UNSET
                 response.error = INTERNAL_ERROR
 

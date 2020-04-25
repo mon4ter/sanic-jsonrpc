@@ -1,11 +1,11 @@
 from copy import copy
-from typing import Generator, Optional, Tuple, Union
+from typing import Dict, Optional, Union
 
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from websockets import WebSocketCommonProtocol as WebSocket
 
-from ._middleware import Directions, Transports, Objects
+from ._middleware import Directions, Objects, Transports
 from .models import Notification, Request, Response
 from .notifier import Notifier
 from .types import AnyJsonrpc, Incoming, Outgoing
@@ -23,7 +23,7 @@ ContextValue = Union[Sanic, SanicRequest, WebSocket, Notifier, Transports, Objec
 class Context:
     __slots__ = (
         '_sanic', '_sanic_request', '_direction', '_transport', '_object', '_request', '_response', '_notification',
-        '_incoming', '_outgoing', '_websocket', '_notifier'
+        '_incoming', '_outgoing', '_websocket', '_notifier', '_dict',
     )
 
     def __init__(
@@ -47,6 +47,8 @@ class Context:
         self._notification = None
         self._incoming = None
         self._outgoing = None
+
+        self._dict = None
 
     def __copy__(self) -> 'Context':
         new = type(self)(self._sanic, self._sanic_request, self._websocket, self._notifier)
@@ -74,7 +76,7 @@ class Context:
                 new._response = value
                 new._outgoing = value
             elif isinstance(value, Directions):
-                self._direction = value
+                new._direction = value
             elif isinstance(value, Notification):
                 new._object = Objects.notification
                 new._notification = value
@@ -87,28 +89,6 @@ class Context:
 
         return new
 
-    def __iter__(self) -> Generator[Tuple[type, ContextValue], None, None]:
-        yield Sanic, self._sanic
-        yield SanicRequest, self._sanic_request
-        yield Directions, self._direction
-        yield Transports, self._transport
-        yield Objects, self._object
-
-        yield Request, self._request
-        yield Optional[Request], self._request
-        yield Response, self._response
-        yield Optional[Response], self._response
-        yield Notification, self._notification
-        yield Optional[Notification], self._notification
-        yield Incoming, self._incoming
-        yield Optional[Incoming], self._incoming
-        yield Outgoing, self._outgoing
-        yield Optional[Outgoing], self._outgoing
-        yield WebSocket, self._websocket
-        yield Optional[WebSocket], self._websocket
-        yield Notifier, self._notifier
-        yield Optional[Notifier], self._notifier
-
     @property
     def direction(self) -> Directions:
         return self._direction
@@ -120,3 +100,40 @@ class Context:
     @property
     def object(self) -> Objects:
         return self._object
+
+    @property
+    def dict(self) -> Dict[type, ContextValue]:
+        if self._dict is None:
+            # TODO Fix _dict[Notification] for py35
+            self._dict = {
+                Sanic: self._sanic,
+                SanicRequest: self._sanic_request,
+                Directions: self._direction,
+                Transports: self._transport,
+                Objects: self._object,
+                WebSocket: self._websocket, Optional[WebSocket]: self._websocket,
+                Notifier: self._notifier, Optional[Notifier]: self._notifier,
+                Request: self._request, Optional[Request]: self._request,
+                Response: self._response, Optional[Response]: self._response,
+                Notification: self._notification, Optional[Notification]: self._notification,
+                Incoming: self._incoming, Optional[Incoming]: self._incoming,
+                Outgoing: self._outgoing, Optional[Outgoing]: self._outgoing,
+            }
+
+        return self._dict
+
+    @property
+    def incoming(self) -> Optional[Incoming]:
+        return self._incoming
+
+    @property
+    def notification(self) -> Optional[Notification]:
+        return self._notification
+
+    @property
+    def outgoing(self) -> Optional[Outgoing]:
+        return self._outgoing
+
+    @property
+    def websocket(self) -> Optional[WebSocket]:
+        return self._websocket
