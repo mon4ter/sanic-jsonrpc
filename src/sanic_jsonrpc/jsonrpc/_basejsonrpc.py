@@ -1,6 +1,6 @@
 from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
@@ -65,14 +65,13 @@ class BaseJsonrpc:
 
         return self._serialize([dict(r) for r in responses])
 
-    def _route(self, incoming: Incoming, is_post: bool) -> Optional[Union[Route, Response]]:
-        is_request = isinstance(incoming, Request)
-        route = self._routes.get((is_post, is_request, incoming.method))
+    def _route(self, incoming: Incoming, t: Transports, o: Objects) -> Optional[Union[Route, Response]]:
+        route = self._routes.get((t, o, incoming.method))
 
         if route:
             return route
 
-        if is_request:
+        if o is Objects.request:
             return Response(error=METHOD_NOT_FOUND, id=incoming.id)
 
     def _register_call(self, *args, **kwargs) -> Future:
@@ -90,9 +89,8 @@ class BaseJsonrpc:
             incoming: Incoming,
             route: Route,
             customs: Dict[type, Any],
-            is_post: bool,
+            transport: Transports,
     ) -> Optional[Response]:
-        transport = Transports.post if is_post else Transports.ws
         is_request = isinstance(incoming, Request)
         error = UNSET
         result = UNSET
@@ -218,39 +216,44 @@ class BaseJsonrpc:
             self,
             method_: Optional[str] = None,
             *,
-            is_post_: Tuple[bool, ...] = (True, False),
-            is_request_: Tuple[bool, ...] = (True, False),
+            predicate_: Predicates = Predicates.incoming,
             **annotations: type
     ) -> Callable:
         if isinstance(method_, Callable):
-            return self.__call__(is_post_=is_post_, is_request_=is_request_)(method_)
+            return self.__call__(predicate_=predicate_)(method_)
+
+        predicate = predicate_.value
 
         def deco(func: Callable) -> Callable:
             route = Route.from_inspect(func, method_, annotations)
-            self._routes.update({(ip, ir, route.method): route for ip in is_post_ for ir in is_request_})
+            self._routes.update({
+                (t, o, route.method): route
+                for t in predicate.transports
+                for o in predicate.objects
+            })
             return func
         return deco
 
     def post(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post, **annotations)
 
     def ws(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws, **annotations)
 
     def request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_request, **annotations)
 
     def notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_notification, **annotations)
 
     def post_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post_request, **annotations)
 
     def ws_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws_request, **annotations)
 
     def post_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post_notification, **annotations)
 
     def ws_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws_notification, **annotations)

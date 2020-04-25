@@ -61,7 +61,10 @@ class SanicJsonrpc(BaseJsonrpc):
                 responses.append(incoming)
                 continue
 
-            route = self._route(incoming, is_post=True)
+            object_ = Objects.request if isinstance(incoming, Request) else Objects.notification
+            is_request = object_ is Objects.request
+
+            route = self._route(incoming, Transports.post, object_)
 
             if not isinstance(route, Route):
                 if route:
@@ -71,13 +74,11 @@ class SanicJsonrpc(BaseJsonrpc):
 
                 continue
 
-            is_request = isinstance(incoming, Request)
-
             fut = self._register_call(incoming, route, self._customs(
                 sanic_request,
                 incoming if is_request else None,
                 None if is_request else incoming
-            ), is_post=True)
+            ), Transports.post)
 
             if is_request:
                 futures.append(fut)
@@ -146,7 +147,10 @@ class SanicJsonrpc(BaseJsonrpc):
                     pending.add(self._ws_outgoing(ws, incoming))
                     continue
 
-                route = self._route(incoming, is_post=False)
+                object_ = Objects.request if isinstance(incoming, Request) else Objects.notification
+                is_request = object_ is Objects.request
+
+                route = self._route(incoming, Transports.ws, object_)
 
                 if not isinstance(route, Route):
                     if route:
@@ -156,8 +160,6 @@ class SanicJsonrpc(BaseJsonrpc):
 
                     continue
 
-                is_request = isinstance(incoming, Request)
-
                 fut = self._register_call(incoming, route, self._customs(
                     sanic_request,
                     incoming if is_request else None,
@@ -165,7 +167,7 @@ class SanicJsonrpc(BaseJsonrpc):
                     None,
                     ws,
                     notifier
-                ), is_post=False)
+                ), Transports.ws)
 
                 if is_request:
                     pending.add(fut)
