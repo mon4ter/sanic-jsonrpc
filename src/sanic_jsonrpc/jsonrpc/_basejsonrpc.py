@@ -7,7 +7,7 @@ from ujson import dumps, loads
 
 from .._middleware import Directions, Objects, Predicates, Transports
 from .._routing import ArgError, ResultError, Route
-from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
+from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc, Incoming, Outgoing
@@ -65,15 +65,6 @@ class BaseJsonrpc:
 
         return self._serialize([dict(r) for r in responses])
 
-    def _route(self, incoming: Incoming, t: Transports, o: Objects) -> Optional[Union[Route, Response]]:
-        route = self._routes.get((t, o, incoming.method))
-
-        if route:
-            return route
-
-        if o is Objects.request:
-            return Response(error=METHOD_NOT_FOUND, id=incoming.id)
-
     def _register_call(self, *args, **kwargs) -> Future:
         fut = shield(self._call(*args, **kwargs))
         self._calls.put_nowait(fut)
@@ -89,19 +80,14 @@ class BaseJsonrpc:
             incoming: Incoming,
             route: Route,
             customs: Dict[type, Any],
-            transport: Transports,
+            t: Transports,
+            o: Objects,
     ) -> Optional[Response]:
-        is_request = isinstance(incoming, Request)
         error = UNSET
         result = UNSET
 
         try:
-            await self._run_middlewares(
-                Directions.incoming,
-                transport,
-                Objects.request if is_request else Objects.notification,
-                customs,
-            )
+            await self._run_middlewares(Directions.incoming, t, o, customs)
         except Error as err:
             error = err
         except Exception as err:
@@ -129,17 +115,12 @@ class BaseJsonrpc:
                 else:
                     result = ret
 
-        if is_request:
+        if o is Objects.request:
             response = Response(result=result, error=error, id=incoming.id)
             customs[Response] = customs[Outgoing] = customs[Optional[Response]] = customs[Optional[Outgoing]] = response
 
             try:
-                await self._run_middlewares(
-                    Directions.outgoing,
-                    transport,
-                    Objects.response,
-                    customs,
-                )
+                await self._run_middlewares(Directions.outgoing, t, Objects.response, customs)
             except Error as err:
                 response.result = UNSET
                 response.error = err

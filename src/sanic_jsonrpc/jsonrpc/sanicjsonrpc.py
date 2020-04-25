@@ -10,7 +10,7 @@ from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
 from .._middleware import Directions, Objects, Predicates, Transports
-from .._routing import Route
+from ..errors import METHOD_NOT_FOUND
 from ..loggers import access_logger, error_logger, logger, traffic_logger
 from ..models import Notification, Request, Response
 from ..notifier import Notifier
@@ -61,14 +61,15 @@ class SanicJsonrpc(BaseJsonrpc):
                 responses.append(incoming)
                 continue
 
+            # TODO Fix duplicate code
             object_ = Objects.request if isinstance(incoming, Request) else Objects.notification
             is_request = object_ is Objects.request
 
-            route = self._route(incoming, Transports.post, object_)
+            route = self._routes.get(incoming.method, Transports.post, object_)
 
-            if not isinstance(route, Route):
-                if route:
-                    responses.append(route)
+            if not route:
+                if is_request:
+                    responses.append(Response(error=METHOD_NOT_FOUND, id=incoming.id))
                 else:
                     logger.info("Unhandled %r", incoming)
 
@@ -150,11 +151,11 @@ class SanicJsonrpc(BaseJsonrpc):
                 object_ = Objects.request if isinstance(incoming, Request) else Objects.notification
                 is_request = object_ is Objects.request
 
-                route = self._route(incoming, Transports.ws, object_)
+                route = self._routes.get(incoming.method, Transports.ws, object_)
 
-                if not isinstance(route, Route):
-                    if route:
-                        pending.add(self._ws_outgoing(ws, route))
+                if not route:
+                    if is_request:
+                        pending.add(self._ws_outgoing(ws, Response(error=METHOD_NOT_FOUND, id=incoming.id)))
                     else:
                         logger.info("Unhandled %r", incoming)
 
