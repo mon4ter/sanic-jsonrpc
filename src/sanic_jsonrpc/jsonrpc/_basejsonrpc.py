@@ -1,7 +1,7 @@
 from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
 from functools import partial
-from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Union
+from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Type, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
@@ -121,9 +121,30 @@ class BaseJsonrpc:
                 error = INVALID_PARAMS
             except Error as err:
                 error = err
-            except Exception as err:
-                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
-                error = INTERNAL_ERROR
+            except Exception as exc:
+                exc_type = type(exc)
+                route = self._exceptions.get(exc_type)
+
+                if route:
+                    logger.debug("Calling %s handler %r", exc_type, route.method)
+
+                    try:
+                        ret = await route.call(exc, ctx.dict)
+                    except Exception as err:
+                        # TODO Test exception in exception handler
+                        error_logger.error(
+                            "Recovery from %s while handling %r failed: %s", err, ctx.incoming, exc, exc_info=exc
+                        )
+                    else:
+                        if isinstance(ret, Error):
+                            # TODO Test ret Error
+                            error = ret
+                        else:
+                            # TODO Test ret Result
+                            result = ret
+                else:
+                    error_logger.error("%r failed: %s", ctx.incoming, exc, exc_info=exc)
+                    error = INTERNAL_ERROR
             else:
                 if isinstance(ret, Error):
                     error = ret
@@ -180,6 +201,7 @@ class BaseJsonrpc:
 
     def __init__(self):
         self._middlewares = defaultdict(list)
+        self._exceptions = {}
         self._routes = {}
         self._calls = None
 
@@ -204,6 +226,18 @@ class BaseJsonrpc:
 
             for key in keys:
                 self._middlewares[key].append(route)
+
+            return func
+        return deco
+
+    def exception(self, *exceptions: Type[Exception]):
+        # TODO Test exception decorator
+        def deco(func: Callable) -> Callable:
+            route = Route.from_inspect(func, None, {})
+            route.result = None
+
+            for exception in exceptions:
+                self._exceptions[exception] = route
 
             return func
         return deco
