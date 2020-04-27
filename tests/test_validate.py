@@ -151,20 +151,19 @@ def app():
 
     @jsonrpc
     def notification_positional(req: Notification) -> bool:
-        # TODO How req can be something but Notification and None?
-        return isinstance(req, Notification) and not isinstance(req, Request)
+        return isinstance(req, Notification)
 
     @jsonrpc
     def notification_keyword(*, req: Notification) -> bool:
-        return isinstance(req, Notification) and not isinstance(req, Request)
+        return isinstance(req, Notification)
 
     @jsonrpc
     def optional_notification_positional(req: Optional[Notification]) -> bool:
-        return isinstance(req, Notification) and not isinstance(req, Request)
+        return isinstance(req, Notification)
 
     @jsonrpc
     def optional_notification_keyword(*, req: Optional[Notification]) -> bool:
-        return isinstance(req, Notification) and not isinstance(req, Request)
+        return isinstance(req, Notification)
 
     @jsonrpc
     def params_types(word: str, multi: int) -> str:

@@ -1,13 +1,15 @@
-from typing import Union
+from typing import Any, Union
 
 from fashionable import Attribute
 
-from .notification import Notification
+from ._jsonrpc import _Jsonrpc
 
 __all__ = [
     'Request',
 ]
 
 
-class Request(Notification):
+class Request(_Jsonrpc):
+    method = Attribute(str, strict=True)
+    params = Attribute(Any)
     id = Attribute(Union[str, int], strict=True)

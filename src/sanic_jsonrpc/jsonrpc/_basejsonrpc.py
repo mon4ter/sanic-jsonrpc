@@ -1,16 +1,18 @@
 from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
-from typing import Any, AnyStr, Callable, Dict, List, Optional, Tuple, Union
+from functools import partial
+from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
 from ujson import dumps, loads
 
-from .._middleware import Directions, Objects, Predicates, Transports
+from .._context import Context
+from .._middleware import Objects, Predicates
 from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
-from ..types import AnyJsonrpc, Incoming, Outgoing
+from ..types import AnyJsonrpc
 
 __all__ = [
     'BaseJsonrpc',
@@ -65,65 +67,62 @@ class BaseJsonrpc:
 
         return self._serialize([dict(r) for r in responses])
 
-    def _route(self, incoming: Incoming, is_post: bool) -> Optional[Union[Route, Response]]:
-        is_request = isinstance(incoming, Request)
-        route = self._routes.get((is_post, is_request, incoming.method))
+    def _handle_incoming(
+            self, ctx: Context, failure_cb: Callable[[Response], None], success_cb: Callable[[Future], None]
+    ) -> bool:
+        route = self._routes.get((ctx.transport, ctx.object, ctx.incoming.method))
 
-        if route:
-            return route
+        if not route:
+            if ctx.object is Objects.request:
+                failure_cb(Response(error=METHOD_NOT_FOUND, id=ctx.incoming.id))
+            else:
+                logger.info("Unhandled %r", ctx.incoming)
 
-        if is_request:
-            return Response(error=METHOD_NOT_FOUND, id=incoming.id)
+            return False
 
-    def _register_call(self, *args, **kwargs) -> Future:
-        fut = shield(self._call(*args, **kwargs))
+        fut = self._register_call(partial(route.call, ctx.incoming.params, ctx.dict), ctx)
+
+        if ctx.object is Objects.request:
+            success_cb(fut)
+
+        return True
+
+    def _register_call(self, call: Callable[[], Coroutine], ctx: Context) -> Future:
+        fut = shield(self._call(call, ctx))
         self._calls.put_nowait(fut)
         return fut
 
-    async def _run_middlewares(self, d: Directions, t: Transports, o: Objects, customs: Dict[type, Any]):
-        for route in self._middlewares[(d, t, o)]:
+    async def _run_middlewares(self, ctx: Context):
+        for route in self._middlewares[(ctx.direction, ctx.transport, ctx.object)]:
             logger.debug("Calling middleware %r", route.method)
-            await route.call([], customs)
+            await route.call([], ctx.dict)
 
-    async def _call(
-            self,
-            incoming: Incoming,
-            route: Route,
-            customs: Dict[type, Any],
-            is_post: bool,
-    ) -> Optional[Response]:
-        transport = Transports.post if is_post else Transports.ws
-        is_request = isinstance(incoming, Request)
+    async def _call(self, call: Callable[[], Coroutine], ctx: Context) -> Optional[Response]:
         error = UNSET
         result = UNSET
 
         try:
-            await self._run_middlewares(
-                Directions.incoming,
-                transport,
-                Objects.request if is_request else Objects.notification,
-                customs,
-            )
+            await self._run_middlewares(ctx)
         except Error as err:
             error = err
         except Exception as err:
-            error_logger.error("Middlewares before incoming %r failed: %s", incoming, err, exc_info=err)
+            error_logger.error("Middlewares before incoming %r failed: %s", ctx.incoming, err, exc_info=err)
             error = INTERNAL_ERROR
         else:
-            traffic_logger.debug("--> %r", incoming)
+            traffic_logger.debug("--> %r", ctx.incoming)
 
             try:
-                ret = await route.call(incoming.params, customs)
+                ret = await call()
             except ResultError as err:
-                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
                 error = INTERNAL_ERROR
             except ArgError as err:
-                logger.debug("Invalid %r: %s", incoming, err)
+                logger.debug("Invalid %r: %s", ctx.incoming, err)
                 error = INVALID_PARAMS
             except Error as err:
                 error = err
             except Exception as err:
-                error_logger.error("%r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
                 error = INTERNAL_ERROR
             else:
                 if isinstance(ret, Error):
@@ -131,22 +130,17 @@ class BaseJsonrpc:
                 else:
                     result = ret
 
-        if is_request:
-            response = Response(result=result, error=error, id=incoming.id)
-            customs[Response] = customs[Outgoing] = customs[Optional[Response]] = customs[Optional[Outgoing]] = response
+        if ctx.object is Objects.request:
+            response = Response(result=result, error=error, id=ctx.incoming.id)
+            ctx = ctx(response)
 
             try:
-                await self._run_middlewares(
-                    Directions.outgoing,
-                    transport,
-                    Objects.response,
-                    customs,
-                )
+                await self._run_middlewares(ctx)
             except Error as err:
                 response.result = UNSET
                 response.error = err
             except Exception as err:
-                error_logger.error("Middlewares after %r failed: %s", incoming, err, exc_info=err)
+                error_logger.error("Middlewares after %r failed: %s", ctx.incoming, err, exc_info=err)
                 response.result = UNSET
                 response.error = INTERNAL_ERROR
 
@@ -218,39 +212,44 @@ class BaseJsonrpc:
             self,
             method_: Optional[str] = None,
             *,
-            is_post_: Tuple[bool, ...] = (True, False),
-            is_request_: Tuple[bool, ...] = (True, False),
+            predicate_: Predicates = Predicates.incoming,
             **annotations: type
     ) -> Callable:
         if isinstance(method_, Callable):
-            return self.__call__(is_post_=is_post_, is_request_=is_request_)(method_)
+            return self.__call__(predicate_=predicate_)(method_)
+
+        predicate = predicate_.value
 
         def deco(func: Callable) -> Callable:
             route = Route.from_inspect(func, method_, annotations)
-            self._routes.update({(ip, ir, route.method): route for ip in is_post_ for ir in is_request_})
+            self._routes.update({
+                (t, o, route.method): route
+                for t in predicate.transports
+                for o in predicate.objects
+            })
             return func
         return deco
 
     def post(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post, **annotations)
 
     def ws(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws, **annotations)
 
     def request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_request, **annotations)
 
     def notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_notification, **annotations)
 
     def post_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post_request, **annotations)
 
     def ws_request(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), is_request_=(True,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws_request, **annotations)
 
     def post_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(True,), is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_post_notification, **annotations)
 
     def ws_notification(self, method_: Optional[str] = None, **annotations: type) -> Callable:
-        return self.__call__(method_, is_post_=(False,), is_request_=(False,), **annotations)
+        return self.__call__(method_, predicate_=Predicates.incoming_ws_notification, **annotations)
