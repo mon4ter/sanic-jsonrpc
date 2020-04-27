@@ -131,18 +131,16 @@ class BaseJsonrpc:
                     try:
                         ret = await route.call(exc, ctx.dict)
                     except Exception as err:
-                        # TODO Test exception in exception handler
                         error_logger.error(
                             "Recovery from %s while handling %r failed: %s", err, ctx.incoming, exc, exc_info=exc
                         )
                     else:
                         if isinstance(ret, Error):
-                            # TODO Test ret Error
                             error = ret
                         else:
-                            # TODO Test ret Result
                             result = ret
-                else:
+
+                if error is UNSET and result is UNSET:
                     error_logger.error("%r failed: %s", ctx.incoming, exc, exc_info=exc)
                     error = INTERNAL_ERROR
             else:
@@ -231,7 +229,6 @@ class BaseJsonrpc:
         return deco
 
     def exception(self, *exceptions: Type[Exception]):
-        # TODO Test exception decorator
         def deco(func: Callable) -> Callable:
             route = Route.from_inspect(func, None, {})
             route.result = None
