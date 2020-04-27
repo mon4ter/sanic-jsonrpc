@@ -7,7 +7,7 @@ from sanic.request import Request as SanicRequest
 from sanic.websocket import WebSocketProtocol
 from websockets import WebSocketCommonProtocol as WebSocket
 
-from sanic_jsonrpc import Notification, Notifier, Request, SanicJsonrpc
+from sanic_jsonrpc import Incoming, Notification, Notifier, Request, SanicJsonrpc
 
 
 class Pair:
@@ -69,21 +69,21 @@ def app():
     def optional_request_keyword(*, req: Optional[Request]) -> bool:
         return isinstance(req, Request)
 
-    # @jsonrpc
-    # def incoming_positional(req: Incoming) -> bool:
-    #     return isinstance(req, Request)
-    #
-    # @jsonrpc
-    # def incoming_keyword(*, req: Incoming) -> bool:
-    #     return isinstance(req, Request)
-    #
-    # @jsonrpc
-    # def optional_incoming_positional(req: Optional[Incoming]) -> bool:
-    #     return isinstance(req, Request)
-    #
-    # @jsonrpc
-    # def optional_incoming_keyword(*, req: Optional[Incoming]) -> bool:
-    #     return isinstance(req, Request)
+    @jsonrpc
+    def incoming_positional(req: Incoming) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def incoming_keyword(*, req: Incoming) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def optional_incoming_positional(req: Optional[Incoming]) -> bool:
+        return isinstance(req, Request)
+
+    @jsonrpc
+    def optional_incoming_keyword(*, req: Optional[Incoming]) -> bool:
+        return isinstance(req, Request)
 
     @jsonrpc.post
     def ws_positional(ws_: WebSocket) -> bool:
@@ -261,18 +261,18 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'optional_request_keyword', 'id': 14},
     {'jsonrpc': '2.0', 'result': True, 'id': 14}
-    # ), (
-    #     {'jsonrpc': '2.0', 'method': 'incoming_positional', 'id': 15},
-    #     {'jsonrpc': '2.0', 'result': True, 'id': 15}
-    # ), (
-    #     {'jsonrpc': '2.0', 'method': 'incoming_keyword', 'id': 16},
-    #     {'jsonrpc': '2.0', 'result': True, 'id': 16}
-    # ), (
-    #     {'jsonrpc': '2.0', 'method': 'optional_incoming_positional', 'id': 17},
-    #     {'jsonrpc': '2.0', 'result': True, 'id': 17}
-    # ), (
-    #     {'jsonrpc': '2.0', 'method': 'optional_incoming_keyword', 'id': 18},
-    #     {'jsonrpc': '2.0', 'result': True, 'id': 18}
+), (
+    {'jsonrpc': '2.0', 'method': 'incoming_positional', 'id': 15},
+    {'jsonrpc': '2.0', 'result': True, 'id': 15}
+), (
+    {'jsonrpc': '2.0', 'method': 'incoming_keyword', 'id': 16},
+    {'jsonrpc': '2.0', 'result': True, 'id': 16}
+), (
+    {'jsonrpc': '2.0', 'method': 'optional_incoming_positional', 'id': 17},
+    {'jsonrpc': '2.0', 'result': True, 'id': 17}
+), (
+    {'jsonrpc': '2.0', 'method': 'optional_incoming_keyword', 'id': 18},
+    {'jsonrpc': '2.0', 'result': True, 'id': 18}
 ), (
     {'jsonrpc': '2.0', 'method': 'ws_positional', 'id': 19},
     {'jsonrpc': '2.0', 'result': True, 'id': 19}
