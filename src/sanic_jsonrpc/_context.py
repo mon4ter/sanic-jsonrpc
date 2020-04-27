@@ -104,7 +104,7 @@ class Context:
     @property
     def dict(self) -> Dict[type, ContextValue]:
         if self._dict is None:
-            # TODO Fix Incoming and Outgoing for py35
+            # TODO Fix Incoming for py35
             self._dict = {
                 Sanic: self._sanic,
                 SanicRequest: self._sanic_request,
@@ -117,7 +117,7 @@ class Context:
                 Response: self._response, Optional[Response]: self._response,
                 Notification: self._notification, Optional[Notification]: self._notification,
                 # Incoming: self._incoming, Optional[Incoming]: self._incoming,
-                # Outgoing: self._outgoing, Optional[Outgoing]: self._outgoing,
+                Outgoing: self._outgoing, Optional[Outgoing]: self._outgoing,
             }
 
         return self._dict

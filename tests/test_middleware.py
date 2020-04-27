@@ -8,7 +8,7 @@ from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 
-from sanic_jsonrpc import Error, Notification, Notifier, Predicates, Request, Response, SanicJsonrpc
+from sanic_jsonrpc import Error, Notification, Notifier, Outgoing, Predicates, Request, Response, SanicJsonrpc
 
 
 def lists_equal_unordered(self: list, other: list) -> bool:
@@ -110,6 +110,29 @@ def app():
 
         return [*params, 'no_predicate']
 
+    @jsonrpc.middleware(Predicates.response)
+    def response_middleware_middleware(request: Request, response: Response):
+        if request.method == 'response_middleware':
+            response.result = 'response_middleware_middleware'
+
+    @jsonrpc
+    def response_middleware():
+        pass
+
+    @jsonrpc.middleware(Predicates.outgoing)
+    def response_middleware_middleware(request: Optional[Request], outgoing: Outgoing):
+        if request:
+            if request.method == 'outgoing_middleware':
+                outgoing.result = 'outgoing_middleware_middleware'
+        else:
+            if outgoing.method == 'outgoing_middleware_callback':
+                outgoing.params = 'outgoing_middleware_middleware'
+
+    @jsonrpc
+    def outgoing_middleware(notifier: Optional[Notifier]):
+        if notifier:
+            notifier.send(Notification('outgoing_middleware_callback'))
+
     return app_
 
 
@@ -142,6 +165,12 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'no_predicate', 'params': [], 'id': 6},
     {'jsonrpc': '2.0', 'result': ['no_predicate_middleware', 'no_predicate', 'no_predicate_middleware'], 'id': 6}
+), (
+    {'jsonrpc': '2.0', 'method': 'response_middleware', 'id': 7},
+    {'jsonrpc': '2.0', 'result': 'response_middleware_middleware', 'id': 7}
+), (
+    {'jsonrpc': '2.0', 'method': 'outgoing_middleware', 'id': 8},
+    {'jsonrpc': '2.0', 'result': 'outgoing_middleware_middleware', 'id': 8}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
@@ -191,6 +220,17 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
     [
         {'jsonrpc': '2.0', 'result': ['no_predicate_middleware', 'no_predicate', 'no_predicate_middleware'], 'id': 7},
         {'jsonrpc': '2.0', 'method': 'no_predicate_callback', 'params': ['no_predicate_middleware']}
+    ]
+), (
+    [{'jsonrpc': '2.0', 'method': 'response_middleware', 'id': 8}],
+    [{'jsonrpc': '2.0', 'result': 'response_middleware_middleware', 'id': 8}]
+), (
+    [
+        {'jsonrpc': '2.0', 'method': 'outgoing_middleware', 'params': [], 'id': 9}
+    ],
+    [
+        {'jsonrpc': '2.0', 'result': 'outgoing_middleware_middleware', 'id': 9},
+        {'jsonrpc': '2.0', 'method': 'outgoing_middleware_callback', 'params': 'outgoing_middleware_middleware'}
     ]
 )])
 async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):

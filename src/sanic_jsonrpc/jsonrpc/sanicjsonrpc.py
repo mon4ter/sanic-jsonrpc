@@ -1,5 +1,4 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, ensure_future, gather, wait
-from functools import partial
 from time import monotonic
 from typing import Optional
 
@@ -11,9 +10,8 @@ from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
 from .._context import Context
-from .._middleware import Directions, Objects, Predicates
-from ..errors import METHOD_NOT_FOUND
-from ..loggers import access_logger, error_logger, logger, traffic_logger
+from .._middleware import Directions, Predicates
+from ..loggers import access_logger, error_logger, traffic_logger
 from ..models import Notification, Request, Response
 from ..notifier import Notifier
 
@@ -43,22 +41,8 @@ class SanicJsonrpc(BaseJsonrpc):
                 responses.append(incoming)
                 continue
 
-            # TODO Fix duplicate code
-            ctx = ctx(incoming)
-            route = self._routes.get((ctx.transport, ctx.object, incoming.method))
-
-            if not route:
-                if ctx.object is Objects.request:
-                    responses.append(Response(error=METHOD_NOT_FOUND, id=incoming.id))
-                else:
-                    logger.info("Unhandled %r", incoming)
-
+            if not self._handle_incoming(ctx(incoming), responses.append, futures.append):
                 continue
-
-            fut = self._register_call(partial(route.call, incoming.params, ctx.dict), ctx)
-
-            if ctx.object is Objects.request:
-                futures.append(fut)
 
         for response in await gather(*futures):
             responses.append(response)
@@ -126,20 +110,9 @@ class SanicJsonrpc(BaseJsonrpc):
                     continue
 
                 ctx = root_ctx(incoming)
-                route = self._routes.get((ctx.transport, ctx.object, incoming.method))
 
-                if not route:
-                    if ctx.object is Objects.request:
-                        pending.add(self._ws_outgoing(ctx(Response(error=METHOD_NOT_FOUND, id=incoming.id))))
-                    else:
-                        logger.info("Unhandled %r", incoming)
-
+                if not self._handle_incoming(ctx, lambda x: pending.add(self._ws_outgoing(ctx(x))), pending.add):
                     continue
-
-                fut = self._register_call(partial(route.call, incoming.params, ctx.dict), ctx)
-
-                if ctx.object is Objects.request:
-                    pending.add(fut)
 
         notifier.cancel()
 

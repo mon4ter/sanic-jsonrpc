@@ -1,5 +1,6 @@
 from asyncio import Future, Queue, ensure_future, shield
 from collections import defaultdict
+from functools import partial
 from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Union
 
 from fashionable import ModelAttributeError, ModelError, UNSET
@@ -8,7 +9,7 @@ from ujson import dumps, loads
 from .._context import Context
 from .._middleware import Objects, Predicates
 from .._routing import ArgError, ResultError, Route
-from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, PARSE_ERROR
+from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
 from ..types import AnyJsonrpc
@@ -65,6 +66,26 @@ class BaseJsonrpc:
             return self._serialize(dict(responses[0]))
 
         return self._serialize([dict(r) for r in responses])
+
+    def _handle_incoming(
+            self, ctx: Context, failure_cb: Callable[[Response], None], success_cb: Callable[[Future], None]
+    ) -> bool:
+        route = self._routes.get((ctx.transport, ctx.object, ctx.incoming.method))
+
+        if not route:
+            if ctx.object is Objects.request:
+                failure_cb(Response(error=METHOD_NOT_FOUND, id=ctx.incoming.id))
+            else:
+                logger.info("Unhandled %r", ctx.incoming)
+
+            return False
+
+        fut = self._register_call(partial(route.call, ctx.incoming.params, ctx.dict), ctx)
+
+        if ctx.object is Objects.request:
+            success_cb(fut)
+
+        return True
 
     def _register_call(self, call: Callable[[], Coroutine], ctx: Context) -> Future:
         fut = shield(self._call(call, ctx))
