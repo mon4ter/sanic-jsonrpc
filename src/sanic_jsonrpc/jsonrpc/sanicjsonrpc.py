@@ -128,14 +128,14 @@ class SanicJsonrpc(BaseJsonrpc):
 
     @staticmethod
     def _sanic_request_pop(req: SanicRequest, key: str) -> Any:
+        value = None
+
         if hasattr(req, 'ctx'):
             value = getattr(req.ctx, key)
             delattr(req.ctx, key)
         elif isinstance(req, dict):
             value = req[key]
             del req[key]
-        else:
-            raise KeyError(key)
 
         return value
 
