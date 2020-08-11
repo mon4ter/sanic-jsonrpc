@@ -1,6 +1,7 @@
 from logging import DEBUG
 from typing import Optional
 
+from fashionable import Attribute, Model
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
@@ -18,6 +19,17 @@ class Pair:
     def __iter__(self):
         yield 'first', self.first
         yield 'second', self.second
+
+
+class C(Model):
+    x = Attribute(float)
+    y = Attribute(float)
+
+
+class Params(Model):
+    a = Attribute(str)
+    b = Attribute(Optional[int])
+    c = Attribute(C)
 
 
 @fixture
@@ -211,6 +223,10 @@ def app():
     def recover_once(first: bool, second: bool) -> bool:
         return first and second
 
+    @jsonrpc
+    def model(params: Params) -> str:
+        return repr(params)
+
     return app_
 
 
@@ -387,6 +403,12 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'recover_once', 'params': True, 'id': 54},
     {'jsonrpc': '2.0', 'error': {'code': -32602, 'message': "Invalid params"}, 'id': 54}
+), (
+    {'jsonrpc': '2.0', 'method': 'model', 'params': [1, 2, [5, 6]], 'id': 55},
+    {'jsonrpc': '2.0', 'result': "Params(a='1', b=2, c=C(x=5.0, y=6.0))", 'id': 55}
+), (
+    {'jsonrpc': '2.0', 'method': 'model', 'params': {'a': 1, 'c': {'x': 5, 'y': 6}}, 'id': 56},
+    {'jsonrpc': '2.0', 'result': "Params(a='1', c=C(x=5.0, y=6.0))", 'id': 56}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)

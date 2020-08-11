@@ -43,7 +43,7 @@ class Arg:
         else:
             try:
                 result = validate(self.type, value)
-            except (TypeError, ValueError) as exc:
+            except (TypeError, ValueError, AttributeError) as exc:
                 raise InvalidArgError(self, value) from exc
 
         return result

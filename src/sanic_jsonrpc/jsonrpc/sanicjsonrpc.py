@@ -1,6 +1,6 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, ensure_future, gather, wait
 from time import monotonic
-from typing import Optional
+from typing import Any, Optional
 
 from fashionable import UNSET
 from sanic import Sanic
@@ -119,6 +119,26 @@ class SanicJsonrpc(BaseJsonrpc):
         for fut in pending:
             fut.cancel()
 
+    @staticmethod
+    def _sanic_request_set(req: SanicRequest, key: str, value: Any):
+        if hasattr(req, 'ctx'):
+            setattr(req.ctx, key, value)
+        elif isinstance(req, dict):
+            req[key] = value
+
+    @staticmethod
+    def _sanic_request_pop(req: SanicRequest, key: str) -> Any:
+        if hasattr(req, 'ctx'):
+            value = getattr(req.ctx, key)
+            delattr(req.ctx, key)
+        elif isinstance(req, dict):
+            value = req[key]
+            del req[key]
+        else:
+            raise KeyError(key)
+
+        return value
+
     def __init__(
             self,
             app: Sanic,
@@ -143,13 +163,12 @@ class SanicJsonrpc(BaseJsonrpc):
             @self.middleware(Predicates.request)
             def set_time(req: Request, sanic_req: SanicRequest):
                 key = 'sanic_jsonrpc-time-{}'.format(req.id)
-                sanic_req[key] = monotonic()
+                self._sanic_request_set(sanic_req, key, monotonic())
 
             @self.middleware(Predicates.response)
             def log_response(req: Request, res: Response, sanic_req: SanicRequest):
                 key = 'sanic_jsonrpc-time-{}'.format(req.id)
-                start = sanic_req[key]
-                del sanic_req[key]
+                start = self._sanic_request_pop(sanic_req, key)
                 access_logger.info("", extra={
                     'method': req.method,
                     'id': req.id,
