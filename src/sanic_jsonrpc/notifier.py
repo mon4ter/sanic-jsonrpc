@@ -13,7 +13,6 @@ _Sender = Callable[[Notification], Future]
 _Finalizer = Callable[[Future], Any]
 
 
-# TODO Add SSE support
 class Notifier:
     def __init__(self, ws: WebSocket, sender: _Sender, finalizer: _Finalizer):
         self._ws = ws
