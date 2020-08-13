@@ -11,6 +11,8 @@ JSON-RPC 2.0 support for Sanic over HTTP and WebSocket
 * Complete JSON-RPC 2.0 Specification implementation, including [batch](https://www.jsonrpc.org/specification#batch)
 * Annotation based type validation
 * Request and/or Notification routing
+* Conditional middleware
+* Exception handlers
 * Server side Notifications
 * Access to app and request objects via annotation
 
