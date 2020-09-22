@@ -1,14 +1,10 @@
 from logging import DEBUG
-from typing import Any, List
 
-from fashionable import UNSET
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
 
 from sanic_jsonrpc import SanicJsonrpc
-# noinspection PyProtectedMember
-from sanic_jsonrpc._routing import Arg
 
 
 @fixture
@@ -222,21 +218,3 @@ async def test_ws_request(caplog, test_cli, in_: dict, out: dict):
     await test_cli.close()
 
     assert data == out
-
-
-@mark.parametrize('arg,arg_repr', [
-    (Arg('positional', Any, UNSET, True, False), 'Arg(positional: typing.Any)'),
-    (Arg('positional', List[int], UNSET, True, False), 'Arg(positional: typing.List[int])'),
-    (Arg('positional', List[str], 'q', True, False), "Arg(positional: typing.List[str] = 'q')"),
-    (Arg('keyword', Any, UNSET, False, False), 'Arg(*, keyword: typing.Any)'),
-    (Arg('keyword', List[int], UNSET, False, False), 'Arg(*, keyword: typing.List[int])'),
-    (Arg('keyword', List[str], 'q', False, False), "Arg(*, keyword: typing.List[str] = 'q')"),
-    (Arg('var_positional', Any, UNSET, True, True), 'Arg(*var_positional: typing.Any)'),
-    (Arg('var_positional', List[int], UNSET, True, True), 'Arg(*var_positional: typing.List[int])'),
-    (Arg('var_positional', List[str], 'q', True, True), "Arg(*var_positional: typing.List[str] = 'q')"),
-    (Arg('var_keyword', Any, UNSET, False, True), 'Arg(**var_keyword: typing.Any)'),
-    (Arg('var_keyword', List[int], UNSET, False, True), 'Arg(**var_keyword: typing.List[int])'),
-    (Arg('var_keyword', List[str], 'q', False, True), "Arg(**var_keyword: typing.List[str] = 'q')"),
-])
-def test_arg_repr(arg, arg_repr):
-    assert repr(arg) == arg_repr

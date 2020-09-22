@@ -1,11 +1,12 @@
 from asyncio import CancelledError, FIRST_COMPLETED, Future, ensure_future, gather, wait
+from http import HTTPStatus
 from time import monotonic
 from typing import Any, Optional
 
 from fashionable import UNSET
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
-from sanic.response import HTTPResponse
+from sanic.response import HTTPResponse, json
 from websockets import WebSocketCommonProtocol as WebSocket
 
 from ._basejsonrpc import BaseJsonrpc
@@ -23,6 +24,30 @@ __all__ = [
 
 
 class SanicJsonrpc(BaseJsonrpc):
+    @staticmethod
+    def _sanic_request_set(req: SanicRequest, key: str, value: Any):
+        if hasattr(req, 'ctx'):
+            setattr(req.ctx, key, value)
+        elif isinstance(req, dict):
+            req[key] = value
+
+    @staticmethod
+    def _sanic_request_pop(req: SanicRequest, key: str) -> Any:
+        value = None
+
+        if hasattr(req, 'ctx'):
+            value = getattr(req.ctx, key)
+            delattr(req.ctx, key)
+        elif isinstance(req, dict):
+            value = req[key]
+            del req[key]
+
+        return value
+
+    @classmethod
+    def _ws_outgoing(cls, ctx: Context) -> Future:
+        return ensure_future(ctx.websocket.send(cls._serialize(ctx.outgoing)))
+
     async def _post(self, sanic_request: SanicRequest) -> HTTPResponse:
         ctx = Context(self.app, sanic_request)
 
@@ -47,12 +72,12 @@ class SanicJsonrpc(BaseJsonrpc):
         for response in await gather(*futures):
             responses.append(response)
 
-        body = self._serialize_responses(responses, single)
-        content_type = 'application/json' if body else 'text/plain'
-        return HTTPResponse(body, 207, content_type=content_type)
+        if responses:
+            sanic_response = json(responses[0] if single else responses, HTTPStatus.MULTI_STATUS, dumps=self._serialize)
+        else:
+            sanic_response = HTTPResponse(status=HTTPStatus.NO_CONTENT)
 
-    def _ws_outgoing(self, ctx: Context) -> Future:
-        return ensure_future(ctx.websocket.send(self._serialize(dict(ctx.outgoing))))
+        return sanic_response
 
     async def _ws_notification(self, ctx: Context):
         try:
@@ -118,26 +143,6 @@ class SanicJsonrpc(BaseJsonrpc):
 
         for fut in pending:
             fut.cancel()
-
-    @staticmethod
-    def _sanic_request_set(req: SanicRequest, key: str, value: Any):
-        if hasattr(req, 'ctx'):
-            setattr(req.ctx, key, value)
-        elif isinstance(req, dict):
-            req[key] = value
-
-    @staticmethod
-    def _sanic_request_pop(req: SanicRequest, key: str) -> Any:
-        value = None
-
-        if hasattr(req, 'ctx'):
-            value = getattr(req.ctx, key)
-            delattr(req.ctx, key)
-        elif isinstance(req, dict):
-            value = req[key]
-            del req[key]
-
-        return value
 
     def __init__(
             self,

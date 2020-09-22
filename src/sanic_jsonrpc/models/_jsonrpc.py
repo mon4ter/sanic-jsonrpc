@@ -1,5 +1,3 @@
-from typing import Optional
-
 from fashionable import Attribute, Model, ModelValueError
 
 __all__ = [
@@ -8,7 +6,7 @@ __all__ = [
 
 
 class _Jsonrpc(Model):
-    jsonrpc = Attribute(Optional[str], strict=True, default='2.0')
+    jsonrpc = Attribute(str, strict=True, default='2.0')
 
     def __init__(self, *args, **kwargs):
         if args and args[0] != '2.0':
@@ -17,6 +15,4 @@ class _Jsonrpc(Model):
         super().__init__(*args, **kwargs)
 
         if self.jsonrpc != '2.0':
-            raise ModelValueError(
-                'Invalid %(model)s: invalid attribute jsonrpc: MUST be exactly "2.0"', model=self.__class__.__name__
-            )
+            raise ModelValueError('MUST be exactly "2.0"', model=type(self).__name__, attr='jsonrpc')

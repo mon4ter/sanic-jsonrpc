@@ -1,4 +1,5 @@
 from asyncio import sleep
+from http import HTTPStatus
 from logging import DEBUG
 
 from pytest import fixture, mark
@@ -74,14 +75,14 @@ def test_cli(loop, app, sanic_client):
         {'jsonrpc': '2.0', 'method': 'long_operation'},
         {'jsonrpc': '2.0', 'method': 'long_operation'},
     ],
-    ''
+    None
 )])
 async def test_call(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    if response.headers['content-type'] == 'application/json':
+    data = None
+
+    if response.status == HTTPStatus.MULTI_STATUS:
         data = await response.json()
-    else:
-        data = await response.text()
 
     assert data == out
