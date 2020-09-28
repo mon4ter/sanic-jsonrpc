@@ -32,6 +32,12 @@ class Params(Model):
     c = Attribute(C)
 
 
+class DefaultParams(Model):
+    a = Attribute(str, default='a')
+    b = Attribute(int, default=0)
+    c = Attribute(C, default=C(0, 0))
+
+
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
@@ -227,6 +233,10 @@ def app():
     def model(params: Params) -> str:
         return repr(params)
 
+    @jsonrpc
+    def default_model(params: DefaultParams = DefaultParams()) -> str:
+        return repr(params)
+
     return app_
 
 
@@ -409,6 +419,15 @@ def test_cli(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'model', 'params': {'a': 1, 'c': {'x': 5, 'y': 6}}, 'id': 56},
     {'jsonrpc': '2.0', 'result': "Params(a='1', c=C(x=5.0, y=6.0))", 'id': 56}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_model', 'params': [], 'id': 58},
+    {'jsonrpc': '2.0', 'result': "DefaultParams(a='a', b=0, c=C(x=0.0, y=0.0))", 'id': 58}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_model', 'params': {}, 'id': 59},
+    {'jsonrpc': '2.0', 'result': "DefaultParams(a='a', b=0, c=C(x=0.0, y=0.0))", 'id': 59}
+), (
+    {'jsonrpc': '2.0', 'method': 'default_model', 'id': 60},
+    {'jsonrpc': '2.0', 'result': "DefaultParams(a='a', b=0, c=C(x=0.0, y=0.0))", 'id': 60}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
