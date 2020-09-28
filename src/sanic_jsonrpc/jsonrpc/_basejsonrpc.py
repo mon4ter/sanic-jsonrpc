@@ -1,14 +1,12 @@
-from asyncio import Future, Queue, ensure_future, shield
+from asyncio import Future, Queue, ensure_future, iscoroutine, shield
 from collections import defaultdict
-from functools import partial
-from typing import Any, AnyStr, Callable, Coroutine, Dict, List, Optional, Type, Union
+from typing import Any, AnyStr, Callable, Dict, List, Optional, Type, Union
 
-from fashionable import ModelAttributeError, ModelError, UNSET
+from fashionable import ArgError, Func, ModelAttributeError, ModelError, RetError, UNSET
 from ujson import dumps, loads
 
 from .._context import Context
 from .._middleware import Objects, Predicates
-from .._routing import ArgError, ResultError, Route
 from ..errors import INTERNAL_ERROR, INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR
 from ..loggers import error_logger, logger, traffic_logger
 from ..models import Error, Notification, Request, Response
@@ -37,8 +35,30 @@ class BaseJsonrpc:
 
             return Response(error=INVALID_REQUEST)
 
-    def _parse_messages(self, json: AnyStr) -> Union[AnyJsonrpc, List[AnyJsonrpc]]:
-        messages = self._parse_json(json)
+    @staticmethod
+    async def _func(func: Func, ctx: Context, *args, **kwargs) -> Any:
+        ret = func[ctx.dict](*args, **kwargs)
+
+        if iscoroutine(ret):
+            ret = await ret
+
+        return ret
+
+    @staticmethod
+    def _finalise_future(fut: Future) -> Optional[Union[Response, str]]:
+        if fut.done():
+            err = fut.exception()
+
+            if err:
+                error_logger.error("%s", err, exc_info=err)
+            else:
+                return fut.result()
+        else:
+            fut.cancel()
+
+    @classmethod
+    def _parse_messages(cls, json: AnyStr) -> Union[AnyJsonrpc, List[AnyJsonrpc]]:
+        messages = cls._parse_json(json)
 
         if isinstance(messages, Response):
             return messages
@@ -47,32 +67,24 @@ class BaseJsonrpc:
             if not messages:
                 return Response(error=INVALID_REQUEST)
 
-            return [self._parse_message(m) for m in messages]
+            return [cls._parse_message(m) for m in messages]
 
-        return self._parse_message(messages)
+        return cls._parse_message(messages)
 
-    def _serialize(self, obj: Any) -> str:
+    @classmethod
+    def _serialize(cls, obj: Any) -> str:
         try:
             return dumps(obj)
         except Exception as err:
             error_logger.error("Failed to serialize object %r: %s", obj, err, exc_info=err)
-            return self._serialize(dict(Response(error=INTERNAL_ERROR)))
-
-    def _serialize_responses(self, responses: List[Response], single: bool) -> Optional[str]:
-        if not responses:
-            return None
-
-        if single:
-            return self._serialize(dict(responses[0]))
-
-        return self._serialize([dict(r) for r in responses])
+            return cls._serialize(Response(error=INTERNAL_ERROR))
 
     def _handle_incoming(
             self, ctx: Context, failure_cb: Callable[[Response], None], success_cb: Callable[[Future], None]
     ) -> bool:
-        route = self._routes.get((ctx.transport, ctx.object, ctx.incoming.method))
+        func = self._routes.get((ctx.transport, ctx.object, ctx.incoming.method))
 
-        if not route:
+        if not func:
             if ctx.object is Objects.request:
                 failure_cb(Response(error=METHOD_NOT_FOUND, id=ctx.incoming.id))
             else:
@@ -80,24 +92,24 @@ class BaseJsonrpc:
 
             return False
 
-        fut = self._register_call(partial(route.call, ctx.incoming.params, ctx.dict), ctx)
+        fut = self._register_call(func, ctx)
 
         if ctx.object is Objects.request:
             success_cb(fut)
 
         return True
 
-    def _register_call(self, call: Callable[[], Coroutine], ctx: Context) -> Future:
-        fut = shield(self._call(call, ctx))
+    def _register_call(self, func: Func, ctx: Context) -> Future:
+        fut = shield(self._call(func, ctx))
         self._calls.put_nowait(fut)
         return fut
 
     async def _run_middlewares(self, ctx: Context):
-        for route in self._middlewares[(ctx.direction, ctx.transport, ctx.object)]:
-            logger.debug("Calling middleware %r", route.method)
-            await route.call([], ctx.dict)
+        for func in self._middlewares[(ctx.direction, ctx.transport, ctx.object)]:
+            logger.debug("Calling middleware %r", func.name)
+            await self._func(func, ctx)
 
-    async def _call(self, call: Callable[[], Coroutine], ctx: Context) -> Optional[Response]:
+    async def _call(self, func: Func, ctx: Context) -> Optional[Response]:
         error = UNSET
         result = UNSET
 
@@ -110,29 +122,37 @@ class BaseJsonrpc:
             error = INTERNAL_ERROR
         else:
             traffic_logger.debug("--> %r", ctx.incoming)
+            params = ctx.incoming.params
 
             try:
-                ret = await call()
-            except ResultError as err:
-                error_logger.error("%r failed: %s", ctx.incoming, err, exc_info=err)
+                if params is UNSET:
+                    ret = await self._func(func, ctx)
+                elif isinstance(params, list):
+                    ret = await self._func(func, ctx, *params)
+                elif isinstance(params, dict):
+                    ret = await self._func(func, ctx, **params)
+                else:
+                    ret = await self._func(func, ctx, params)
+            except RetError as err:
+                error_logger.error(err, exc_info=err)
                 error = INTERNAL_ERROR
             except ArgError as err:
-                logger.debug("Invalid %r: %s", ctx.incoming, err)
+                logger.debug(err)
                 error = INVALID_PARAMS
             except Error as err:
                 error = err
             except Exception as exc:
                 exc_type = type(exc)
-                route = self._exceptions.get(exc_type)
+                handler = self._exceptions.get(exc_type)
 
-                if route:
-                    logger.debug("Calling %s handler %r", exc_type, route.method)
+                if handler:
+                    logger.debug("Calling %s handler %r", exc_type, handler.name)
 
                     try:
-                        ret = await route.call(exc, ctx.dict)
+                        ret = await self._func(handler, ctx, exc)
                     except Exception as err:
                         error_logger.error(
-                            "Recovery from %s while handling %r failed: %s", err, ctx.incoming, exc, exc_info=exc
+                            "Recovery from %s while handling %r failed: %s", exc, ctx.incoming, err, exc_info=err
                         )
                     else:
                         if isinstance(ret, Error):
@@ -165,18 +185,6 @@ class BaseJsonrpc:
 
             traffic_logger.debug("<-- %r", response)
             return response
-
-    @staticmethod
-    def _finalise_future(fut: Future) -> Optional[Union[Response, str]]:
-        if fut.done():
-            err = fut.exception()
-
-            if err:
-                error_logger.error("%s", err, exc_info=err)
-            else:
-                return fut.result()
-        else:
-            fut.cancel()
 
     async def _processing(self):
         calls = self._calls
@@ -213,8 +221,7 @@ class BaseJsonrpc:
         predicate = predicate.value
 
         def deco(func: Callable) -> Callable:
-            route = Route.from_inspect(func, name, {})
-            route.result = None
+            func = Func.fashionable(func, name, {'return_': Func.empty})
             keys = {
                 (d, t, o)
                 for d in predicate.directions
@@ -223,18 +230,17 @@ class BaseJsonrpc:
             }
 
             for key in keys:
-                self._middlewares[key].append(route)
+                self._middlewares[key].append(func)
 
             return func
         return deco
 
     def exception(self, *exceptions: Type[Exception]):
         def deco(func: Callable) -> Callable:
-            route = Route.from_inspect(func, None, {})
-            route.result = None
+            func = Func.fashionable(func, None, {'return_': Func.empty})
 
             for exception in exceptions:
-                self._exceptions[exception] = route
+                self._exceptions[exception] = func
 
             return func
         return deco
@@ -252,9 +258,12 @@ class BaseJsonrpc:
         predicate = predicate_.value
 
         def deco(func: Callable) -> Callable:
-            route = Route.from_inspect(func, method_, annotations)
+            if 'result' in annotations:
+                annotations['return_'] = annotations.pop('result')
+
+            func = Func.fashionable(func, method_, annotations)
             self._routes.update({
-                (t, o, route.method): route
+                (t, o, func.name): func
                 for t in predicate.transports
                 for o in predicate.objects
             })

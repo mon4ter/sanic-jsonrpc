@@ -1,5 +1,6 @@
 from asyncio import TimeoutError
 from functools import partial
+from http import HTTPStatus
 from logging import DEBUG
 from operator import contains
 from typing import List
@@ -55,10 +56,10 @@ def test_cli(loop, app, sanic_client):
     '{"jsonrpc": "2.0", "result": 19, "id": 4}'
 ), (
     '{"jsonrpc": "2.0", "method": "update", "params": [1,2,3,4,5]}',
-    ''
+    None
 ), (
     '{"jsonrpc": "2.0", "method": "foobar"}',
-    ''
+    None
 ), (
     '{"jsonrpc": "2.0", "method": "foobar", "id": "1"}',
     '{"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": "1"}'
@@ -110,13 +111,13 @@ def test_cli(loop, app, sanic_client):
     '    {"jsonrpc": "2.0", "method": "notify_sum", "params": [1,2,4]},'
     '    {"jsonrpc": "2.0", "method": "notify_hello", "params": [7]}'
     ']',
-    ''
+    None
 )])
 async def test_post(caplog, test_cli, in_: str, out: str):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', data=in_)
 
-    if response.headers['content-type'] == 'application/json':
+    if response.status == HTTPStatus.MULTI_STATUS:
         left = await response.json()
 
         if not isinstance(left, list):
@@ -129,7 +130,7 @@ async def test_post(caplog, test_cli, in_: str, out: str):
 
         assert lists_equal_unordered(left, right)
     else:
-        assert await response.text() == out
+        assert out is None
 
 
 @mark.parametrize('in_,out', [(
