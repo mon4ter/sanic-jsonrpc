@@ -10,6 +10,8 @@ from websockets import WebSocketCommonProtocol as WebSocket
 
 from sanic_jsonrpc import Incoming, Notification, Notifier, Request, SanicJsonrpc
 
+Sanic.test_mode = True
+
 
 class Pair:
     def __init__(self, first: int, second: int):

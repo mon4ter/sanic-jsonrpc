@@ -10,6 +10,8 @@ from sanic.websocket import WebSocketProtocol
 
 from sanic_jsonrpc import Error, Notification, Notifier, Outgoing, Predicates, Request, Response, SanicJsonrpc
 
+Sanic.test_mode = True
+
 
 def lists_equal_unordered(self: list, other: list) -> bool:
     return all(map(partial(contains, other), self)) and all(map(partial(contains, self), other))

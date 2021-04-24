@@ -12,6 +12,8 @@ from ujson import loads
 
 from sanic_jsonrpc import SanicJsonrpc
 
+Sanic.test_mode = True
+
 
 def lists_equal_unordered(self: list, other: list) -> bool:
     return all(map(partial(contains, other), self)) and all(map(partial(contains, self), other))
