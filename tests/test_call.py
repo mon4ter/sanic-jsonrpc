@@ -7,6 +7,8 @@ from sanic import Sanic
 
 from sanic_jsonrpc import Error, SanicJsonrpc
 
+Sanic.test_mode = True
+
 
 @fixture
 def app():

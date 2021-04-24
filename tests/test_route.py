@@ -6,6 +6,8 @@ from sanic.websocket import WebSocketProtocol
 
 from sanic_jsonrpc import SanicJsonrpc
 
+Sanic.test_mode = True
+
 
 @fixture
 def app():

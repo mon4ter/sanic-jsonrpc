@@ -11,6 +11,8 @@ from websockets import ConnectionClosed
 
 from sanic_jsonrpc import SanicJsonrpc, Notifier, Notification
 
+Sanic.test_mode = True
+
 
 def lists_equal_unordered(self: list, other: list) -> bool:
     return all(map(partial(contains, other), self)) and all(map(partial(contains, self), other))
