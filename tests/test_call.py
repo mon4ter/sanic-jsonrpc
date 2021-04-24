@@ -84,7 +84,7 @@ async def test_call(caplog, test_cli, in_: dict, out: dict):
     response = await test_cli.post('/post', json=in_)
     data = None
 
-    if response.status == HTTPStatus.MULTI_STATUS:
-        data = await response.json()
+    if response.status_code == HTTPStatus.MULTI_STATUS:
+        data = response.json()
 
     assert data == out

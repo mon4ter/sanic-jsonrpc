@@ -177,7 +177,7 @@ def test_cli(loop, app, sanic_client):
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    data = await response.json()
+    data = response.json()
 
     assert data == out
 

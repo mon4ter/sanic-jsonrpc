@@ -119,8 +119,8 @@ async def test_post(caplog, test_cli, in_: str, out: str):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', data=in_)
 
-    if response.status == HTTPStatus.MULTI_STATUS:
-        left = await response.json()
+    if response.status_code == HTTPStatus.MULTI_STATUS:
+        left = response.json()
 
         if not isinstance(left, list):
             left = [left]
