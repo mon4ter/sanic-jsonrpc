@@ -21,8 +21,9 @@ setup(
     install_requires=[
         "sanic ~= 19.3.1; python_version < '3.6'",
         "sanic ~= 20.12.3; python_version >= '3.6'",
-        'fashionable ~= 0.12.0',
-        'ujson ~= 4.1.0',
+        "fashionable ~= 0.12.0",
+        "ujson ~= 3.2.0; python_version < '3.6'",
+        "ujson ~= 4.1.0; python_version >= '3.6'",
         "websockets ~= 7.0; python_version < '3.6'",
         "websockets ~= 8.1; python_version >= '3.6'",
     ],
@@ -31,7 +32,9 @@ setup(
         "pytest-runner ~= 5.3.1; python_version >= '3.6'",
     ],
     tests_require=[
-        'pytest ~= 6.2.4',
+        "pytest ~= 6.1.2; python_version < '3.6'",
+        "pytest ~= 6.2.4; python_version >= '3.6'",
+        "pytest-cov ~= 2.12.1",
         "pytest-sanic ~= 1.2.0; python_version < '3.6'",
         "pytest-sanic ~= 1.7.0; python_version >= '3.6'",
     ],
