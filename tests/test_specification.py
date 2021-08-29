@@ -122,7 +122,10 @@ def test_cli_ws(loop, app, sanic_client):
 )])
 async def test_post(caplog, test_cli, in_: str, out: str):
     caplog.set_level(DEBUG)
-    response = await test_cli.post('/post', content=in_)
+    try:
+        response = await test_cli.post('/post', content=in_)
+    except TypeError:
+        response = await test_cli.post('/post', data=in_)
 
     if (response.status_code if hasattr(response, 'status_code') else response.status) == HTTPStatus.MULTI_STATUS:
         left = response.json()
