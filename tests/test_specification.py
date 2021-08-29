@@ -8,7 +8,7 @@ from typing import List
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
-from ujson import dumps, loads
+from ujson import loads
 
 from sanic_jsonrpc import SanicJsonrpc
 
@@ -218,7 +218,7 @@ async def test_ws(caplog, test_cli_ws, in_: List[str], out: List[str]):
     ws = await test_cli_ws.ws_connect('/ws')
 
     for data in in_:
-        await ws.send(data) if hasattr(ws, 'send') else ws.send_str(data)
+        await ws.send(data) if hasattr(ws, 'send') else await ws.send_str(data)
 
     left = []
 
