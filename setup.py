@@ -37,7 +37,7 @@ setup(
         "pytest ~= 6.1.2; python_version < '3.6'",
         "pytest ~= 6.2.4; python_version >= '3.6'",
         "pytest-cov ~= 2.12.1",
-        "pytest-sanic ~= 1.2.0; python_version < '3.6'",
+        "pytest-sanic ~= 1.1.2; python_version < '3.6'",
         "pytest-sanic ~= 1.7.0; python_version == '3.6'",
         "pytest-sanic ~= 1.8.1; python_version >= '3.7'",
     ],
