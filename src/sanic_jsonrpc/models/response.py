@@ -11,6 +11,6 @@ __all__ = [
 
 
 class Response(_Jsonrpc):
-    result = Attribute(Any)
-    error = Attribute(Optional[Error])
-    id = Attribute(Optional[Union[str, int]], strict=True, default=None)
+    result = Attribute(Any, case_insensitive=False)
+    error = Attribute(Optional[Error], case_insensitive=False)
+    id = Attribute(Optional[Union[str, int]], strict=True, default=None, case_insensitive=False)

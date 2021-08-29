@@ -10,5 +10,5 @@ __all__ = [
 
 
 class Notification(_Jsonrpc):
-    method = Attribute(str, strict=True)
-    params = Attribute(Any)
+    method = Attribute(str, strict=True, case_insensitive=False)
+    params = Attribute(Any, case_insensitive=False)

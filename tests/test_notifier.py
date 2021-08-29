@@ -1,4 +1,4 @@
-from asyncio import TimeoutError, sleep, ensure_future
+from asyncio import TimeoutError, sleep, ensure_future, wait_for
 from functools import partial
 from logging import DEBUG
 from operator import contains
@@ -7,6 +7,7 @@ from typing import List
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.websocket import WebSocketProtocol
+from ujson import dumps, loads
 from websockets import ConnectionClosed
 
 from sanic_jsonrpc import SanicJsonrpc, Notifier, Notification
@@ -66,8 +67,8 @@ def app():
 
 
 @fixture
-def test_cli(loop, app, sanic_client):
-    return loop.run_until_complete(sanic_client(app, protocol=WebSocketProtocol))
+def test_cli_ws(loop, app, sanic_client):
+    return loop.run_until_complete(sanic_client(app, scheme='ws', protocol=WebSocketProtocol))
 
 
 @mark.parametrize('in_,out', [(
@@ -104,23 +105,23 @@ def test_cli(loop, app, sanic_client):
         {'jsonrpc': '2.0', 'result': None, 'id': 5},
     ]
 )])
-async def test_ws(caplog, test_cli, in_: List[dict], out: List[dict]):
+async def test_ws(caplog, test_cli_ws, in_: List[dict], out: List[dict]):
     caplog.set_level(DEBUG)
-    ws = await test_cli.ws_connect('/ws')
+    ws = await test_cli_ws.ws_connect('/ws')
 
     for data in in_:
-        await ws.send_json(data)
+        await ws.send(dumps(data))
 
     left = []
 
     while True:
         try:
-            left.append(await ws.receive_json(timeout=0.05))
+            left.append(loads(await wait_for(ws.recv(), 0.05)))
         except TimeoutError:
             break
 
     await ws.close()
-    await test_cli.close()
+    await test_cli_ws.close()
 
     right = out
 

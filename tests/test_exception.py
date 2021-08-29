@@ -1,3 +1,4 @@
+from asyncio import iscoroutine
 from logging import DEBUG
 
 from pytest import fixture, mark
@@ -8,15 +9,15 @@ from sanic_jsonrpc import Error, SanicJsonrpc
 Sanic.test_mode = True
 
 
-class TestExceptionError(Exception):
+class TstExceptionError(Exception):
     pass
 
 
-class TestExceptionResult(Exception):
+class TstExceptionResult(Exception):
     pass
 
 
-class TestExceptionException(Exception):
+class TstExceptionException(Exception):
     pass
 
 
@@ -25,29 +26,29 @@ def app():
     app_ = Sanic('sanic-jsonrpc')
     jsonrpc = SanicJsonrpc(app_, '/post')
 
-    @jsonrpc.exception(TestExceptionError)
-    def test_exception_error_exception(exc: TestExceptionError):
+    @jsonrpc.exception(TstExceptionError)
+    def test_exception_error_exception(exc: TstExceptionError):
         return Error(exc.args[0], 'test_exception_error_exception')
 
     @jsonrpc
     def test_exception_error():
-        raise TestExceptionError(4455)
+        raise TstExceptionError(4455)
 
-    @jsonrpc.exception(TestExceptionResult)
-    def test_exception_result_exception(exc: TestExceptionResult):
+    @jsonrpc.exception(TstExceptionResult)
+    def test_exception_result_exception(exc: TstExceptionResult):
         return exc.args[0], 'test_exception_result_exception'
 
     @jsonrpc
     def test_exception_result():
-        raise TestExceptionResult(8899)
+        raise TstExceptionResult(8899)
 
-    @jsonrpc.exception(TestExceptionException)
-    def test_exception_exception_exception(exc: TestExceptionException):
+    @jsonrpc.exception(TstExceptionException)
+    def test_exception_exception_exception(exc: TstExceptionException):
         raise exc
 
     @jsonrpc
     def test_exception_exception():
-        raise TestExceptionException
+        raise TstExceptionException
 
     return app_
 
@@ -70,6 +71,7 @@ def test_cli(loop, app, sanic_client):
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    data = await response.json()
+    data = response.json()
+    data = (await data) if iscoroutine(data) else data
 
     assert data == out

@@ -1,3 +1,4 @@
+from asyncio import iscoroutine, wait_for
 from logging import DEBUG
 from typing import Optional
 
@@ -6,6 +7,7 @@ from pytest import fixture, mark
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
 from sanic.websocket import WebSocketProtocol
+from ujson import dumps, loads
 from websockets import WebSocketCommonProtocol as WebSocket
 
 from sanic_jsonrpc import Incoming, Notification, Notifier, Request, SanicJsonrpc
@@ -244,7 +246,12 @@ def app():
 
 @fixture
 def test_cli(loop, app, sanic_client):
-    return loop.run_until_complete(sanic_client(app, protocol=WebSocketProtocol))
+    return loop.run_until_complete(sanic_client(app))
+
+
+@fixture
+def test_cli_ws(loop, app, sanic_client):
+    return loop.run_until_complete(sanic_client(app, scheme='ws', protocol=WebSocketProtocol))
 
 
 @mark.parametrize('in_,out', [(
@@ -434,7 +441,9 @@ def test_cli(loop, app, sanic_client):
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    assert await response.json() == out
+    data = response.json()
+    data = (await data) if iscoroutine(data) else data
+    assert data == out
 
 
 @mark.parametrize('in_,out', [(
@@ -462,12 +471,12 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
     {'jsonrpc': '2.0', 'method': 'optional_notifier_keyword', 'id': 8},
     {'jsonrpc': '2.0', 'result': True, 'id': 8}
 )])
-async def test_ws(caplog, test_cli, in_: dict, out: dict):
+async def test_ws(caplog, test_cli_ws, in_: dict, out: dict):
     caplog.set_level(DEBUG)
-    ws = await test_cli.ws_connect('/ws')
-    await ws.send_json(in_)
-    data = await ws.receive_json(timeout=0.01)
+    ws = await test_cli_ws.ws_connect('/ws')
+    await ws.send(dumps(in_))
+    data = loads(await wait_for(ws.recv(), 0.01))
     await ws.close()
-    await test_cli.close()
+    await test_cli_ws.close()
 
     assert data == out

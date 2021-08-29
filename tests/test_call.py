@@ -1,4 +1,4 @@
-from asyncio import sleep
+from asyncio import iscoroutine, sleep
 from http import HTTPStatus
 from logging import DEBUG
 
@@ -84,7 +84,8 @@ async def test_call(caplog, test_cli, in_: dict, out: dict):
     response = await test_cli.post('/post', json=in_)
     data = None
 
-    if response.status == HTTPStatus.MULTI_STATUS:
-        data = await response.json()
+    if (response.status_code if hasattr(response, 'status_code') else response.status) == HTTPStatus.MULTI_STATUS:
+        data = response.json()
+        data = (await data) if iscoroutine(data) else data
 
     assert data == out
