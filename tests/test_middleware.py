@@ -247,13 +247,15 @@ async def test_ws(caplog, test_cli_ws, in_: List[dict], out: List[dict]):
     ws = await test_cli_ws.ws_connect('/ws')
 
     for data in in_:
-        await ws.send(dumps(data))
+        await ws.send(dumps(data)) if hasattr(ws, 'send') else ws.send_json(data)
 
     left = []
 
     while True:
         try:
-            left.append(loads(await wait_for(ws.recv(), 0.05)))
+            left.append(
+                loads(await wait_for(ws.recv(), 0.05)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.05)
+            )
         except TimeoutError:
             break
 

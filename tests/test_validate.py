@@ -474,8 +474,8 @@ async def test_post(caplog, test_cli, in_: dict, out: dict):
 async def test_ws(caplog, test_cli_ws, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     ws = await test_cli_ws.ws_connect('/ws')
-    await ws.send(dumps(in_))
-    data = loads(await wait_for(ws.recv(), 0.01))
+    await ws.send(dumps(in_)) if hasattr(ws, 'send') else ws.send_json(in_)
+    data = loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
     await ws.close()
     await test_cli_ws.close()
 

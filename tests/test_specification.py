@@ -122,7 +122,7 @@ def test_cli_ws(loop, app, sanic_client):
 )])
 async def test_post(caplog, test_cli, in_: str, out: str):
     caplog.set_level(DEBUG)
-    response = await test_cli.post('/post', data=in_)
+    response = await test_cli.post('/post', content=in_)
 
     if (response.status_code if hasattr(response, 'status_code') else response.status) == HTTPStatus.MULTI_STATUS:
         left = response.json()
@@ -218,13 +218,15 @@ async def test_ws(caplog, test_cli_ws, in_: List[str], out: List[str]):
     ws = await test_cli_ws.ws_connect('/ws')
 
     for data in in_:
-        await ws.send(data)
+        await ws.send(data) if hasattr(ws, 'send') else ws.send_str(data)
 
     left = []
 
     while True:
         try:
-            left.append(loads(await wait_for(ws.recv(), 0.01)))
+            left.append(
+                loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
+            )
         except TimeoutError:
             break
 
