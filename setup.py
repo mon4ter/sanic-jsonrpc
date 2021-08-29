@@ -24,7 +24,7 @@ setup(
         "fashionable ~= 0.12.0",
         "ujson ~= 3.2.0; python_version < '3.6'",
         "ujson ~= 4.1.0; python_version >= '3.6'",
-        "websockets ~= 7.0; python_version < '3.6'",
+        "websockets ~= 6.0; python_version < '3.6'",
         "websockets ~= 8.1; python_version >= '3.6'",
     ],
     setup_requires=[
