@@ -26,7 +26,10 @@ setup(
         "websockets ~= 7.0; python_version < '3.6'",
         "websockets ~= 8.1; python_version >= '3.6'",
     ],
-    setup_requires=['pytest-runner ~= 5.3.1'],
+    setup_requires=[
+        "pytest-runner ~= 5.2; python_version < '3.6'",
+        "pytest-runner ~= 5.3.1; python_version >= '3.6'",
+    ],
     tests_require=[
         'pytest ~= 6.2.4',
         "pytest-sanic ~= 1.2.0; python_version < '3.6'",
