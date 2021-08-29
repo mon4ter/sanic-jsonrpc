@@ -221,7 +221,7 @@ class BaseJsonrpc:
         predicate = predicate.value
 
         def deco(func: Callable) -> Callable:
-            func = Func.fashionable(func, name, {'return_': Func.empty})
+            func = Func.fashionable(func, name, False, {'return_': Func.empty})
             keys = {
                 (d, t, o)
                 for d in predicate.directions
@@ -237,7 +237,7 @@ class BaseJsonrpc:
 
     def exception(self, *exceptions: Type[Exception]):
         def deco(func: Callable) -> Callable:
-            func = Func.fashionable(func, None, {'return_': Func.empty})
+            func = Func.fashionable(func, None, False, {'return_': Func.empty})
 
             for exception in exceptions:
                 self._exceptions[exception] = func
@@ -261,7 +261,7 @@ class BaseJsonrpc:
             if 'result' in annotations:
                 annotations['return_'] = annotations.pop('result')
 
-            func = Func.fashionable(func, method_, annotations)
+            func = Func.fashionable(func, method_, False, annotations)
             self._routes.update({
                 (t, o, func.name): func
                 for t in predicate.transports

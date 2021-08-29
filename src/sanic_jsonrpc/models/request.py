@@ -10,6 +10,6 @@ __all__ = [
 
 
 class Request(_Jsonrpc):
-    method = Attribute(str, strict=True)
-    params = Attribute(Any)
-    id = Attribute(Union[str, int], strict=True)
+    method = Attribute(str, strict=True, case_insensitive=False)
+    params = Attribute(Any, case_insensitive=False)
+    id = Attribute(Union[str, int], strict=True, case_insensitive=False)

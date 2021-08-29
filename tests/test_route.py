@@ -1,3 +1,5 @@
+from asyncio import iscoroutine, wait_for
+from json import dumps, loads
 from logging import DEBUG
 
 from pytest import fixture, mark
@@ -91,7 +93,12 @@ def app():
 
 @fixture
 def test_cli(loop, app, sanic_client):
-    return loop.run_until_complete(sanic_client(app, protocol=WebSocketProtocol))
+    return loop.run_until_complete(sanic_client(app))
+
+
+@fixture
+def test_cli_ws(loop, app, sanic_client):
+    return loop.run_until_complete(sanic_client(app, scheme='ws', protocol=WebSocketProtocol))
 
 
 @mark.parametrize('in_,out', [(
@@ -152,7 +159,8 @@ def test_cli(loop, app, sanic_client):
 async def test_post_request(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     response = await test_cli.post('/post', json=in_)
-    data = await response.json()
+    data = response.json()
+    data = (await data) if iscoroutine(data) else data
     assert data == out
 
 
@@ -211,12 +219,12 @@ async def test_post_request(caplog, test_cli, in_: dict, out: dict):
     {'jsonrpc': '2.0', 'method': 'WsNotification', 'id': 18},
     {'jsonrpc': '2.0', 'error': {'code': -32601, 'message': "Method not found"}, 'id': 18}
 )])
-async def test_ws_request(caplog, test_cli, in_: dict, out: dict):
+async def test_ws_request(caplog, test_cli_ws, in_: dict, out: dict):
     caplog.set_level(DEBUG)
-    ws = await test_cli.ws_connect('/ws')
-    await ws.send_json(in_)
-    data = await ws.receive_json(timeout=0.01)
+    ws = await test_cli_ws.ws_connect('/ws')
+    await ws.send(dumps(in_)) if hasattr(ws, 'send') else await ws.send_json(in_)
+    data = loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
     await ws.close()
-    await test_cli.close()
+    await test_cli_ws.close()
 
     assert data == out

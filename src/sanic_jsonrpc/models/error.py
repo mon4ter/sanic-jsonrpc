@@ -8,6 +8,6 @@ __all__ = [
 
 
 class Error(Model, Exception):
-    code = Attribute(int)
-    message = Attribute(str)
-    data = Attribute(Any)
+    code = Attribute(int, case_insensitive=False)
+    message = Attribute(str, case_insensitive=False)
+    data = Attribute(Any, case_insensitive=False)

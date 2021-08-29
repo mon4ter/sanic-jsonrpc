@@ -6,7 +6,7 @@ __all__ = [
 
 
 class _Jsonrpc(Model):
-    jsonrpc = Attribute(str, strict=True, default='2.0')
+    jsonrpc = Attribute(str, strict=True, default='2.0', case_insensitive=False)
 
     def __init__(self, *args, **kwargs):
         if args and args[0] != '2.0':

@@ -1,4 +1,4 @@
-from asyncio import TimeoutError
+from asyncio import TimeoutError, iscoroutine, wait_for
 from functools import partial
 from http import HTTPStatus
 from logging import DEBUG
@@ -41,7 +41,12 @@ def app():
 
 @fixture
 def test_cli(loop, app, sanic_client):
-    return loop.run_until_complete(sanic_client(app, protocol=WebSocketProtocol))
+    return loop.run_until_complete(sanic_client(app))
+
+
+@fixture
+def test_cli_ws(loop, app, sanic_client):
+    return loop.run_until_complete(sanic_client(app, scheme='ws', protocol=WebSocketProtocol))
 
 
 @mark.parametrize('in_,out', [(
@@ -117,10 +122,14 @@ def test_cli(loop, app, sanic_client):
 )])
 async def test_post(caplog, test_cli, in_: str, out: str):
     caplog.set_level(DEBUG)
-    response = await test_cli.post('/post', data=in_)
+    try:
+        response = await test_cli.post('/post', content=in_)
+    except TypeError:
+        response = await test_cli.post('/post', data=in_)
 
-    if response.status == HTTPStatus.MULTI_STATUS:
-        left = await response.json()
+    if (response.status_code if hasattr(response, 'status_code') else response.status) == HTTPStatus.MULTI_STATUS:
+        left = response.json()
+        left = (await left) if iscoroutine(left) else left
 
         if not isinstance(left, list):
             left = [left]
@@ -207,23 +216,25 @@ async def test_post(caplog, test_cli, in_: str, out: str):
     ],
     []
 )])
-async def test_ws(caplog, test_cli, in_: List[str], out: List[str]):
+async def test_ws(caplog, test_cli_ws, in_: List[str], out: List[str]):
     caplog.set_level(DEBUG)
-    ws = await test_cli.ws_connect('/ws')
+    ws = await test_cli_ws.ws_connect('/ws')
 
     for data in in_:
-        await ws.send_str(data)
+        await ws.send(data) if hasattr(ws, 'send') else await ws.send_str(data)
 
     left = []
 
     while True:
         try:
-            left.append(loads(await ws.receive_str(timeout=0.01)))
+            left.append(
+                loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
+            )
         except TimeoutError:
             break
 
     await ws.close()
-    await test_cli.close()
+    await test_cli_ws.close()
 
     right = [loads(s) for s in out]
 
