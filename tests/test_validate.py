@@ -42,6 +42,11 @@ class DefaultParams(Model):
     c = Attribute(C, default=C(0, 0))
 
 
+class CaseInsensitive(Model):
+    first_arg = Attribute(str)
+    some_more_arg = Attribute(str)
+
+
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
@@ -241,6 +246,10 @@ def app():
     def default_model(params: DefaultParams = DefaultParams()) -> str:
         return repr(params)
 
+    @jsonrpc
+    def case_insensitive(params: CaseInsensitive) -> str:
+        return repr(params)
+
     return app_
 
 
@@ -437,6 +446,9 @@ def test_cli_ws(loop, app, sanic_client):
 ), (
     {'jsonrpc': '2.0', 'method': 'default_model', 'id': 60},
     {'jsonrpc': '2.0', 'result': "DefaultParams(a='a', b=0, c=C(x=0.0, y=0.0))", 'id': 60}
+), (
+    {'jsonrpc': '2.0', 'method': 'caseInsensitive', 'params': {'firstArg': 'a', 'someMoreArg': 'b'}, 'id': 61},
+    {'jsonrpc': '2.0', 'result': "CaseInsensitive(first_arg='a', some_more_arg='b')", 'id': 61}
 )])
 async def test_post(caplog, test_cli, in_: dict, out: dict):
     caplog.set_level(DEBUG)

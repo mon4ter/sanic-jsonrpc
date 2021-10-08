@@ -2,7 +2,7 @@ from asyncio import Future, Queue, ensure_future, iscoroutine, shield
 from collections import defaultdict
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Type, Union
 
-from fashionable import ArgError, Func, ModelAttributeError, ModelError, RetError, UNSET
+from fashionable import ArgError, CIStr, Func, ModelAttributeError, ModelError, RetError, UNSET
 from ujson import dumps, loads
 
 from .._context import Context
@@ -82,7 +82,11 @@ class BaseJsonrpc:
     def _handle_incoming(
             self, ctx: Context, failure_cb: Callable[[Response], None], success_cb: Callable[[Future], None]
     ) -> bool:
-        func = self._routes.get((ctx.transport, ctx.object, ctx.incoming.method))
+        func = self._routes.get((
+            ctx.transport,
+            ctx.object,
+            CIStr(ctx.incoming.method) if self._case_insensitive else ctx.incoming.method,
+        ))
 
         if not func:
             if ctx.object is Objects.request:
@@ -205,11 +209,12 @@ class BaseJsonrpc:
         while not calls.empty():
             await calls.get_nowait()
 
-    def __init__(self):
+    def __init__(self, *, case_insensitive: bool):
         self._middlewares = defaultdict(list)
         self._exceptions = {}
         self._routes = {}
         self._calls = None
+        self._case_insensitive = case_insensitive
 
     def middleware(self, predicate: Union[Predicates, str], name: Optional[str] = None) -> Callable:
         if isinstance(predicate, Callable):
@@ -261,9 +266,9 @@ class BaseJsonrpc:
             if 'result' in annotations:
                 annotations['return_'] = annotations.pop('result')
 
-            func = Func.fashionable(func, method_, False, annotations)
+            func = Func.fashionable(func, method_, self._case_insensitive, annotations)
             self._routes.update({
-                (t, o, func.name): func
+                (t, o, CIStr(func.name) if self._case_insensitive else func.name): func
                 for t in predicate.transports
                 for o in predicate.objects
             })
