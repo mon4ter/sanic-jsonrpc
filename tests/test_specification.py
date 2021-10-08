@@ -228,7 +228,7 @@ async def test_ws(caplog, test_cli_ws, in_: List[str], out: List[str]):
     while True:
         try:
             left.append(
-                loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
+                loads(await wait_for(ws.recv(), 0.1)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.1)
             )
         except TimeoutError:
             break

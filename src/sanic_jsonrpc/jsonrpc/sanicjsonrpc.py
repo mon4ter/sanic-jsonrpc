@@ -150,9 +150,10 @@ class SanicJsonrpc(BaseJsonrpc):
             post_route: Optional[str] = None,
             ws_route: Optional[str] = None,
             *,
-            access_log: bool = True
+            access_log: bool = True,
+            case_insensitive: bool = True
     ):
-        super().__init__()
+        super().__init__(case_insensitive=case_insensitive)
         self.app = app
         self._processing_task = None
         app.listener('after_server_start')(self._start_processing)

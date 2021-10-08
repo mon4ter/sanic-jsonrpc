@@ -14,7 +14,7 @@ Sanic.test_mode = True
 @fixture
 def app():
     app_ = Sanic('sanic-jsonrpc')
-    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws', case_insensitive=False)
 
     @jsonrpc
     def default():
@@ -92,6 +92,18 @@ def app():
 
 
 @fixture
+def app_ci():
+    app_ = Sanic('sanic-jsonrpc')
+    jsonrpc = SanicJsonrpc(app_, '/post', '/ws')
+
+    @jsonrpc
+    def case_insensitive():
+        return 'case_insensitive'
+
+    return app_
+
+
+@fixture
 def test_cli(loop, app, sanic_client):
     return loop.run_until_complete(sanic_client(app))
 
@@ -99,6 +111,11 @@ def test_cli(loop, app, sanic_client):
 @fixture
 def test_cli_ws(loop, app, sanic_client):
     return loop.run_until_complete(sanic_client(app, scheme='ws', protocol=WebSocketProtocol))
+
+
+@fixture
+def test_cli_ci(loop, app_ci, sanic_client):
+    return loop.run_until_complete(sanic_client(app_ci))
 
 
 @mark.parametrize('in_,out', [(
@@ -223,8 +240,29 @@ async def test_ws_request(caplog, test_cli_ws, in_: dict, out: dict):
     caplog.set_level(DEBUG)
     ws = await test_cli_ws.ws_connect('/ws')
     await ws.send(dumps(in_)) if hasattr(ws, 'send') else await ws.send_json(in_)
-    data = loads(await wait_for(ws.recv(), 0.01)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.01)
+    data = loads(await wait_for(ws.recv(), 0.1)) if hasattr(ws, 'recv') else await ws.receive_json(timeout=0.1)
     await ws.close()
     await test_cli_ws.close()
 
+    assert data == out
+
+
+@mark.parametrize('in_,out', [(
+    {'jsonrpc': '2.0', 'method': 'case_insensitive', 'id': 1},
+    {'jsonrpc': '2.0', 'result': 'case_insensitive', 'id': 1}
+), (
+    {'jsonrpc': '2.0', 'method': 'case-insensitive', 'id': 2},
+    {'jsonrpc': '2.0', 'result': 'case_insensitive', 'id': 2}
+), (
+    {'jsonrpc': '2.0', 'method': 'caseInsensitive', 'id': 3},
+    {'jsonrpc': '2.0', 'result': 'case_insensitive', 'id': 3}
+), (
+    {'jsonrpc': '2.0', 'method': 'CaseInsensitive', 'id': 4},
+    {'jsonrpc': '2.0', 'result': 'case_insensitive', 'id': 4}
+)])
+async def test_post_request_ci(caplog, test_cli_ci, in_: dict, out: dict):
+    caplog.set_level(DEBUG)
+    response = await test_cli_ci.post('/post', json=in_)
+    data = response.json()
+    data = (await data) if iscoroutine(data) else data
     assert data == out
