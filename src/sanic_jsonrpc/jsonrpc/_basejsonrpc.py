@@ -2,7 +2,7 @@ from asyncio import Future, Queue, ensure_future, iscoroutine, shield
 from collections import defaultdict
 from typing import Any, AnyStr, Callable, Dict, List, Optional, Type, Union
 
-from fashionable import ArgError, Func, ModelAttributeError, ModelError, RetError, UNSET, CIStr
+from fashionable import ArgError, CIStr, Func, ModelAttributeError, ModelError, RetError, UNSET
 from ujson import dumps, loads
 
 from .._context import Context
