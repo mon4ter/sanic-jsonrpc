@@ -22,7 +22,7 @@ setup(
         "sanic ~= 19.3.1; python_version < '3.6'",
         "sanic ~= 20.12.3; python_version == '3.6'",
         "sanic ~= 21.6.2; python_version >= '3.7'",
-        "fashionable ~= 0.12.0",
+        "fashionable ~= 0.12.2",
         "ujson ~= 3.2.0; python_version < '3.6'",
         "ujson ~= 4.1.0; python_version >= '3.6'",
         "websockets ~= 6.0; python_version < '3.6'",
