@@ -6,7 +6,12 @@ from fashionable import Attribute, Model
 from pytest import fixture, mark
 from sanic import Sanic
 from sanic.request import Request as SanicRequest
-from sanic.websocket import WebSocketProtocol
+
+try:
+    from sanic.server.protocols.websocket_protocol import WebSocketProtocol
+except ImportError:
+    from sanic.websocket import WebSocketProtocol
+
 from ujson import dumps, loads
 from websockets import WebSocketCommonProtocol as WebSocket
 
