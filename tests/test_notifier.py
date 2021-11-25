@@ -6,7 +6,12 @@ from typing import List
 
 from pytest import fixture, mark
 from sanic import Sanic
-from sanic.websocket import WebSocketProtocol
+
+try:
+    from sanic.server.protocols.websocket_protocol import WebSocketProtocol
+except ImportError:
+    from sanic.websocket import WebSocketProtocol
+
 from ujson import dumps, loads
 from websockets import ConnectionClosed
 
